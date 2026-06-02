@@ -1,0 +1,84 @@
+# --- Dependencies ---
+node_modules/
+.pnpm-store/
+.pnp
+.pnp.js
+
+# --- Build outputs ---
+dist/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# --- Environment & secrets (commit only *.example templates) ---
+.env
+.env.*
+!.env.example
+!.env.*.example
+.env.local
+.env.*.local
+
+# --- Runtime / local data ---
+.kubehealer/
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Kubernetes credentials (never commit) ---
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+**/kubeconfig.yaml
+**/kubeconfig.yml
+
+# --- IDE & editor ---
+.cursor/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Logs & test coverage ---
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage/
+.nyc_output/
+
+# --- Internal / scratch (not for public repo) ---
+.deploy-test/
+.planning/
+agent-transcripts/
+
+# --- Deploy platforms ---
+.vercel/
+
+# --- Certificates & keys ---
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+*.crt.local
+
+# --- Misc caches ---
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+
+# --- Optional local overrides ---
+*.local

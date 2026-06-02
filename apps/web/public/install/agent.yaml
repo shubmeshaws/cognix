@@ -1,0 +1,94 @@
+# KubeHealer in-cluster agent — single-file install
+# 1. Create a cluster registration in the KubeHealer dashboard (Clusters → In-cluster agent).
+# 2. Fill in stringData below, then: kubectl apply -f agent.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubehealer-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubehealer-agent
+  namespace: kubehealer-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubehealer-agent
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubehealer-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubehealer-agent
+subjects:
+  - kind: ServiceAccount
+    name: kubehealer-agent
+    namespace: kubehealer-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubehealer-config
+  namespace: kubehealer-system
+type: Opaque
+stringData:
+  KUBEHEALER_API_URL: "REPLACE_API_URL"
+  KUBEHEALER_CLUSTER_TOKEN: "REPLACE_CLUSTER_TOKEN"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubehealer-agent
+  namespace: kubehealer-system
+  labels:
+    app: kubehealer-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubehealer-agent
+  template:
+    metadata:
+      labels:
+        app: kubehealer-agent
+    spec:
+      serviceAccountName: kubehealer-agent
+      containers:
+        - name: kubehealer-agent
+          image: ghcr.io/yourorg/kubehealer-agent:latest
+          imagePullPolicy: IfNotPresent
+          command: ["node", "dist/in-cluster/index.js"]
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: kubehealer-config
+          resources:
+            requests:
+              cpu: 128m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
