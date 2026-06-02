@@ -153,7 +153,6 @@ export function useClusterSocket(
       updateHeal,
       updatePod,
       queryClient,
-      clusterId,
     ],
   );
 
@@ -234,7 +233,7 @@ export function useClusterSocket(
       setConnected(false);
       setWsConnected(false);
     };
-  }, [clusterId, token, dispatch, setWsConnected]);
+  }, [clusterId, token, dispatch, setWsConnected, queryClient]);
 
   return { connected, lastEvent };
 }

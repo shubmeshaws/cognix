@@ -1,5 +1,6 @@
 import {
   DEFAULT_LLM_CHAIN,
+  DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_PUTER_MODEL,
   normalizeLlmChain,
   type LlmProviderChain,
@@ -19,8 +20,11 @@ export interface LlmRuntimeOverrides {
   ollamaModel?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  anthropicApiKey?: string;
+  anthropicModel?: string;
   puterAuthToken?: string;
   puterModel?: string;
+  puterAppOrigin?: string;
 }
 
 let overrides: LlmRuntimeOverrides = {};
@@ -67,6 +71,16 @@ export function getEffectiveOpenAiModel(): string {
   return overrides.openaiModel?.trim() || "gpt-4o-mini";
 }
 
+export function getEffectiveAnthropicKey(env: Env): string | undefined {
+  const key = overrides.anthropicApiKey?.trim();
+  if (key) return key;
+  return env.ANTHROPIC_API_KEY;
+}
+
+export function getEffectiveAnthropicModel(): string {
+  return overrides.anthropicModel?.trim() || DEFAULT_ANTHROPIC_MODEL;
+}
+
 export function getEffectivePuterAuthToken(env: Env): string | undefined {
   const token = overrides.puterAuthToken?.trim();
   if (token) return token;
@@ -75,6 +89,14 @@ export function getEffectivePuterAuthToken(env: Env): string | undefined {
 
 export function getEffectivePuterModel(): string {
   return overrides.puterModel?.trim() || DEFAULT_PUTER_MODEL;
+}
+
+export function getEffectivePuterAppOrigin(env: Env): string {
+  return (
+    overrides.puterAppOrigin?.trim() ||
+    env.PUTER_APP_ORIGIN?.trim() ||
+    "http://localhost:3000"
+  );
 }
 
 /** @deprecated Use getEffectiveLlmChain */
@@ -96,6 +118,8 @@ export function isProviderConfigured(
       return Boolean(getEffectiveOllamaUrl(env));
     case "openai":
       return Boolean(getEffectiveOpenAiKey(env));
+    case "anthropic":
+      return Boolean(getEffectiveAnthropicKey(env));
     case "puter":
       return Boolean(getEffectivePuterAuthToken(env));
     default:
@@ -104,9 +128,22 @@ export function isProviderConfigured(
 }
 
 export function getConfiguredChain(env: Env): LlmProviderId[] {
-  return getEffectiveLlmChain().filter(
+  const explicit = getEffectiveLlmChain().filter(
     (p): p is LlmProviderId => p !== null && isProviderConfigured(p, env),
   );
+
+  // If user explicitly configured a chain (even partially), use it as-is.
+  if (explicit.length > 0) return explicit;
+
+  // Auto-detect available providers from environment when no chain configured.
+  // This lets Ollama work out-of-the-box when OLLAMA_URL is set in .env
+  // without requiring the user to go to Settings → Apply first.
+  const detected: LlmProviderId[] = [];
+  if (isProviderConfigured("ollama", env)) detected.push("ollama");
+  if (isProviderConfigured("openai", env)) detected.push("openai");
+  if (isProviderConfigured("anthropic", env)) detected.push("anthropic");
+  if (isProviderConfigured("puter", env)) detected.push("puter");
+  return detected;
 }
 
 export function maskApiKey(key: string | undefined): string | null {

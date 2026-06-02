@@ -63,17 +63,15 @@ function usageTotals(
   };
 }
 
-/** Server-side Puter chat via drivers/call (sign-in session tokens). */
-export async function callPuterDriver(
-  sessionToken: string,
+/** Server-side Puter chat via drivers/call using an app token (no exchange). */
+export async function callPuterDriverWithAppToken(
+  appToken: string,
   system: string,
   prompt: string,
   model: string,
   origin: string,
   timeoutMs = 30_000,
 ): Promise<LlmCompletionResult> {
-  const appToken = await exchangePuterAppToken(sessionToken, origin);
-
   const body = {
     interface: "puter-chat-completion",
     driver: "openai-completion",
@@ -124,4 +122,25 @@ export async function callPuterDriver(
     text,
     ...usageTotals(data.result?.usage),
   };
+}
+
+/** Server-side Puter chat via drivers/call (sign-in session tokens). */
+export async function callPuterDriver(
+  sessionToken: string,
+  system: string,
+  prompt: string,
+  model: string,
+  origin: string,
+  timeoutMs = 30_000,
+): Promise<LlmCompletionResult> {
+  const appToken = await exchangePuterAppToken(sessionToken, origin);
+
+  return callPuterDriverWithAppToken(
+    appToken,
+    system,
+    prompt,
+    model,
+    origin,
+    timeoutMs,
+  );
 }

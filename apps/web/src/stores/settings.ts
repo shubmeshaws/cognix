@@ -1,4 +1,5 @@
 import {
+  DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_LLM_CHAIN,
   DEFAULT_PUTER_MODEL,
   isLegacyDefaultLlmChain,
@@ -25,8 +26,11 @@ export interface AgentSettings {
   ollamaModel: string;
   openaiApiKey: string;
   openaiModel: string;
+  anthropicApiKey: string;
+  anthropicModel: string;
   puterAuthToken: string;
   puterModel: string;
+  puterAppOrigin: string;
 }
 
 const STORAGE_KEY = "kubehealer-agent-settings";
@@ -38,8 +42,11 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   ollamaModel: "llama3.2:1b",
   openaiApiKey: "",
   openaiModel: "gpt-4o-mini",
+  anthropicApiKey: "",
+  anthropicModel: DEFAULT_ANTHROPIC_MODEL,
   puterAuthToken: "",
   puterModel: DEFAULT_PUTER_MODEL,
+  puterAppOrigin: "",
 };
 
 function loadSettings(): AgentSettings {
@@ -67,8 +74,12 @@ function loadSettings(): AgentSettings {
       ollamaModel: parsed.ollamaModel ?? DEFAULT_AGENT_SETTINGS.ollamaModel,
       openaiApiKey: parsed.openaiApiKey ?? "",
       openaiModel: parsed.openaiModel ?? DEFAULT_AGENT_SETTINGS.openaiModel,
+      anthropicApiKey: parsed.anthropicApiKey ?? "",
+      anthropicModel:
+        parsed.anthropicModel ?? DEFAULT_AGENT_SETTINGS.anthropicModel,
       puterAuthToken: parsed.puterAuthToken ?? "",
       puterModel,
+      puterAppOrigin: parsed.puterAppOrigin ?? "",
     };
   } catch {
     return DEFAULT_AGENT_SETTINGS;
@@ -88,20 +99,26 @@ function snapshot(state: SettingsState): AgentSettings {
     ollamaModel: state.ollamaModel,
     openaiApiKey: state.openaiApiKey,
     openaiModel: state.openaiModel,
+    anthropicApiKey: state.anthropicApiKey,
+    anthropicModel: state.anthropicModel,
     puterAuthToken: state.puterAuthToken,
     puterModel: state.puterModel,
+    puterAppOrigin: state.puterAppOrigin,
   };
 }
 
 interface SettingsState extends AgentSettings {
   hydrated: boolean;
   openaiKeyConfiguredOnAgent: boolean;
+  anthropicKeyConfiguredOnAgent: boolean;
   puterTokenConfiguredOnAgent: boolean;
   hydrate: () => void;
   mergeFromAgent: (
     patch: Partial<AgentSettings> & {
       openaiApiKeySet?: boolean;
+      anthropicApiKeySet?: boolean;
       puterAuthTokenSet?: boolean;
+      puterAppOrigin?: string;
     },
   ) => void;
   setLlmChain: (chain: LlmProviderChain) => void;
@@ -112,8 +129,11 @@ interface SettingsState extends AgentSettings {
   setOllamaModel: (value: string) => void;
   setOpenaiApiKey: (value: string) => void;
   setOpenaiModel: (value: string) => void;
+  setAnthropicApiKey: (value: string) => void;
+  setAnthropicModel: (value: string) => void;
   setPuterAuthToken: (value: string) => void;
   setPuterModel: (value: string) => void;
+  setPuterAppOrigin: (value: string) => void;
   reset: () => void;
 }
 
@@ -121,6 +141,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   ...DEFAULT_AGENT_SETTINGS,
   hydrated: false,
   openaiKeyConfiguredOnAgent: false,
+  anthropicKeyConfiguredOnAgent: false,
   puterTokenConfiguredOnAgent: false,
 
   hydrate: () => {
@@ -134,6 +155,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         state.ollamaUrl === DEFAULT_AGENT_SETTINGS.ollamaUrl &&
         state.ollamaModel === DEFAULT_AGENT_SETTINGS.ollamaModel &&
         state.openaiModel === DEFAULT_AGENT_SETTINGS.openaiModel &&
+        state.anthropicModel === DEFAULT_AGENT_SETTINGS.anthropicModel &&
         state.puterModel === DEFAULT_AGENT_SETTINGS.puterModel;
 
       return {
@@ -150,11 +172,19 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         ...(stillDefaults && patch.openaiModel
           ? { openaiModel: patch.openaiModel }
           : {}),
+        ...(stillDefaults && patch.anthropicModel
+          ? { anthropicModel: patch.anthropicModel }
+          : {}),
         ...(stillDefaults && patch.puterModel
           ? { puterModel: patch.puterModel }
           : {}),
+        ...(patch.puterAppOrigin
+          ? { puterAppOrigin: patch.puterAppOrigin }
+          : {}),
         openaiKeyConfiguredOnAgent:
           patch.openaiApiKeySet ?? state.openaiKeyConfiguredOnAgent,
+        anthropicKeyConfiguredOnAgent:
+          patch.anthropicApiKeySet ?? state.anthropicKeyConfiguredOnAgent,
         puterTokenConfiguredOnAgent:
           patch.puterAuthTokenSet ?? state.puterTokenConfiguredOnAgent,
       };
@@ -238,6 +268,22 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     });
   },
 
+  setAnthropicApiKey: (anthropicApiKey) => {
+    set((state) => {
+      const next = { ...state, anthropicApiKey };
+      persistSettings(snapshot(next));
+      return next;
+    });
+  },
+
+  setAnthropicModel: (anthropicModel) => {
+    set((state) => {
+      const next = { ...state, anthropicModel };
+      persistSettings(snapshot(next));
+      return next;
+    });
+  },
+
   setPuterAuthToken: (puterAuthToken) => {
     set((state) => {
       const next = { ...state, puterAuthToken };
@@ -254,11 +300,20 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     });
   },
 
+  setPuterAppOrigin: (puterAppOrigin) => {
+    set((state) => {
+      const next = { ...state, puterAppOrigin };
+      persistSettings(snapshot(next));
+      return next;
+    });
+  },
+
   reset: () => {
     persistSettings(DEFAULT_AGENT_SETTINGS);
     set({
       ...DEFAULT_AGENT_SETTINGS,
       openaiKeyConfiguredOnAgent: false,
+      anthropicKeyConfiguredOnAgent: false,
       puterTokenConfiguredOnAgent: false,
     });
   },

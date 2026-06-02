@@ -3,10 +3,13 @@ import type { LlmProviderId } from "@kubehealer/shared";
 import type { Env } from "../config/env.js";
 import {
   getConfiguredChain,
+  getEffectiveAnthropicKey,
+  getEffectiveAnthropicModel,
   getEffectiveOllamaModel,
   getEffectiveOllamaUrl,
   getEffectiveOpenAiKey,
   getEffectiveOpenAiModel,
+  getEffectivePuterAppOrigin,
   getEffectivePuterAuthToken,
   getEffectivePuterModel,
   isProviderConfigured,
@@ -14,6 +17,7 @@ import {
 import { parseDiagnosis } from "./parse.js";
 import { buildUserPrompt } from "./prompts/index.js";
 import { SYSTEM_PROMPT } from "./prompts/system.js";
+import { callAnthropic } from "./providers/anthropic.js";
 import { callOllama } from "./providers/ollama.js";
 import { callOpenAi } from "./providers/openai.js";
 import { callPuter } from "./providers/puter.js";
@@ -182,7 +186,7 @@ export class PodReasoner {
           getEffectiveOllamaUrl(this.env),
           system,
           prompt,
-          8_000,
+          90_000,
           getEffectiveOllamaModel(),
         );
         return {
@@ -213,6 +217,25 @@ export class PodReasoner {
           latencyMs: Math.round(performance.now() - start),
         };
       }
+      case "anthropic": {
+        const key = getEffectiveAnthropicKey(this.env);
+        if (!key) throw new Error("Anthropic API key is not configured");
+        const result = await callAnthropic(
+          key,
+          system,
+          prompt,
+          30_000,
+          getEffectiveAnthropicModel(),
+        );
+        return {
+          text: result.text,
+          provider: "anthropic",
+          promptTokens: result.promptTokens,
+          completionTokens: result.completionTokens,
+          totalTokens: result.totalTokens,
+          latencyMs: Math.round(performance.now() - start),
+        };
+      }
       case "puter": {
         const token = getEffectivePuterAuthToken(this.env);
         if (!token) throw new Error("Puter auth token is not configured");
@@ -222,7 +245,7 @@ export class PodReasoner {
           prompt,
           30_000,
           getEffectivePuterModel(),
-          this.env.PUTER_APP_ORIGIN?.trim() || "http://localhost:3000",
+          getEffectivePuterAppOrigin(this.env),
         );
         return {
           text: result.text,

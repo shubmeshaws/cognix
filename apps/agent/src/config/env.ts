@@ -6,6 +6,7 @@ const envSchema = z.object({
   REDIS_URL: z.string().url(),
   OLLAMA_URL: z.string().url(),
   OPENAI_API_KEY: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
   /** Puter.js session token (optional; prefer sign-in from Settings UI) */
   PUTER_AUTH_TOKEN: z.string().optional(),
   /** Origin for Puter app-token exchange (defaults to http://localhost:3000). */

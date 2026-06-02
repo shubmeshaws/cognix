@@ -14,6 +14,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 
 import {
@@ -37,7 +38,7 @@ const NAV = [
   { href: "/dashboard/nodes", label: "Nodes", icon: Server },
   { href: "/dashboard/clusters", label: "Clusters", icon: Layers },
   { href: "/dashboard/rules", label: "Rules", icon: ShieldCheck },
-  { href: "/dashboard/meshy", label: "MeshyAI", icon: Mic },
+  { href: "/dashboard/meshy", label: "MeshyAI", icon: Sparkles },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
@@ -80,7 +81,9 @@ export function Sidebar() {
 
       <nav className="flex-1 space-y-0.5 px-2 py-3">
         {NAV.map(({ href, label, icon: Icon, badgeKey }) => {
-          const active = pathname === href;
+          const active =
+            pathname === href ||
+            (href === "/dashboard/meshy" && pathname.startsWith("/dashboard/meshy"));
           const count = badgeKey ? badges[badgeKey] : 0;
           return (
             <Link

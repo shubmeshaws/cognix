@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  DEFAULT_ANTHROPIC_MODEL,
   LLM_CHAIN_SLOT_LABELS,
   LLM_PROVIDER_CATALOG,
   type LlmChainSlotLabel,
   type LlmProviderId,
 } from "@kubehealer/shared";
-import { Bot, Cloud, Cpu, Plus, Trash2 } from "lucide-react";
+import { Bot, Brain, Cloud, Cpu, Plus, Trash2 } from "lucide-react";
 
 import { InfoTooltip } from "@/components/InfoTooltip";
 import { PuterAuthBlock } from "@/components/settings/PuterAuthBlock";
@@ -19,6 +20,7 @@ import {
   testLlmConnection,
   updateLlmConfig,
 } from "@/lib/api";
+import { normalizePuterAppOrigin } from "@/lib/puter-auth";
 import { useAgentToken } from "@/hooks/useAgentToken";
 import { useSettingsStore } from "@/stores/settings";
 import { cn } from "@/lib/utils";
@@ -26,6 +28,7 @@ import { cn } from "@/lib/utils";
 const PROVIDER_ICONS: Record<LlmProviderId, typeof Cpu> = {
   ollama: Cpu,
   openai: Cloud,
+  anthropic: Brain,
   puter: Bot,
 };
 
@@ -38,6 +41,8 @@ function providerSummary(
       return `${settings.ollamaModel} · ${settings.ollamaUrl}`;
     case "openai":
       return settings.openaiModel;
+    case "anthropic":
+      return settings.anthropicModel;
     case "puter":
       return settings.puterModel;
     default:
@@ -49,22 +54,31 @@ function ProviderConfigFields({
   provider,
   onTest,
   testing,
+  testLabel = "Test via agent",
 }: {
   provider: LlmProviderId;
   onTest: () => void;
   testing: boolean;
+  testLabel?: string;
 }) {
   const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
   const ollamaModel = useSettingsStore((s) => s.ollamaModel);
   const openaiApiKey = useSettingsStore((s) => s.openaiApiKey);
   const openaiModel = useSettingsStore((s) => s.openaiModel);
+  const anthropicApiKey = useSettingsStore((s) => s.anthropicApiKey);
+  const anthropicModel = useSettingsStore((s) => s.anthropicModel);
   const openaiKeyConfiguredOnAgent = useSettingsStore(
     (s) => s.openaiKeyConfiguredOnAgent,
+  );
+  const anthropicKeyConfiguredOnAgent = useSettingsStore(
+    (s) => s.anthropicKeyConfiguredOnAgent,
   );
   const setOllamaUrl = useSettingsStore((s) => s.setOllamaUrl);
   const setOllamaModel = useSettingsStore((s) => s.setOllamaModel);
   const setOpenaiApiKey = useSettingsStore((s) => s.setOpenaiApiKey);
   const setOpenaiModel = useSettingsStore((s) => s.setOpenaiModel);
+  const setAnthropicApiKey = useSettingsStore((s) => s.setAnthropicApiKey);
+  const setAnthropicModel = useSettingsStore((s) => s.setAnthropicModel);
 
   const fieldClass =
     "w-full rounded-md border bg-background px-3 py-2 text-sm";
@@ -91,7 +105,7 @@ function ProviderConfigFields({
           />
         </label>
         <Button type="button" size="sm" variant="outline" disabled={testing} onClick={onTest}>
-          Test connection
+          {testLabel}
         </Button>
       </div>
     );
@@ -109,11 +123,16 @@ function ProviderConfigFields({
             onChange={(e) => setOpenaiApiKey(e.target.value)}
             placeholder={
               openaiKeyConfiguredOnAgent
-                ? "Leave blank to keep existing key on agent"
+                ? "Leave blank to use key already on agent"
                 : "sk-..."
             }
           />
         </label>
+        {!openaiApiKey.trim() && !openaiKeyConfiguredOnAgent && (
+          <p className="text-xs text-amber-600">
+            Enter your OpenAI API key above, or Apply to agent after saving one.
+          </p>
+        )}
         <label className="block space-y-1 text-xs">
           <span className="font-medium">Model</span>
           <input
@@ -124,7 +143,40 @@ function ProviderConfigFields({
           />
         </label>
         <Button type="button" size="sm" variant="outline" disabled={testing} onClick={onTest}>
-          Test connection
+          {testLabel}
+        </Button>
+      </div>
+    );
+  }
+
+  if (provider === "anthropic") {
+    return (
+      <div className="mt-3 space-y-3 border-t pt-3">
+        <label className="block space-y-1 text-xs">
+          <span className="font-medium">Claude API key</span>
+          <input
+            type="password"
+            className={fieldClass}
+            value={anthropicApiKey}
+            onChange={(e) => setAnthropicApiKey(e.target.value)}
+            placeholder={
+              anthropicKeyConfiguredOnAgent
+                ? "Leave blank to keep existing key on agent"
+                : "sk-ant-..."
+            }
+          />
+        </label>
+        <label className="block space-y-1 text-xs">
+          <span className="font-medium">Model</span>
+          <input
+            className={fieldClass}
+            value={anthropicModel}
+            onChange={(e) => setAnthropicModel(e.target.value)}
+            placeholder={DEFAULT_ANTHROPIC_MODEL}
+          />
+        </label>
+        <Button type="button" size="sm" variant="outline" disabled={testing} onClick={onTest}>
+          {testLabel}
         </Button>
       </div>
     );
@@ -132,7 +184,7 @@ function ProviderConfigFields({
 
   return (
     <div className="mt-3 space-y-3 border-t pt-3">
-      <PuterAuthBlock onTest={onTest} testing={testing} />
+      <PuterAuthBlock onTest={onTest} testing={testing} testLabel={testLabel} />
     </div>
   );
 }
@@ -165,14 +217,15 @@ export function LlmProviderChain() {
 
   useEffect(() => {
     if (!configQuery.data) return;
-    // Do not merge llmChain from agent — localStorage is the UI source of truth.
-    // The agent keeps its own chain until the user clicks Apply.
     mergeFromAgent({
       ollamaUrl: configQuery.data.ollamaUrl,
       ollamaModel: configQuery.data.ollamaModel,
       openaiModel: configQuery.data.openaiModel,
+      anthropicModel: configQuery.data.anthropicModel,
       puterModel: configQuery.data.puterModel,
+      puterAppOrigin: configQuery.data.puterAppOrigin,
       openaiApiKeySet: configQuery.data.openaiApiKeySet,
+      anthropicApiKeySet: configQuery.data.anthropicApiKeySet,
       puterAuthTokenSet: configQuery.data.puterAuthTokenSet,
     });
   }, [configQuery.data, mergeFromAgent]);
@@ -187,37 +240,56 @@ export function LlmProviderChain() {
   const slotsFull = llmChain.every((p) => p !== null);
   const usedProviders = new Set(llmChain.filter(Boolean));
 
+  const buildApplyBody = (): Parameters<typeof updateLlmConfig>[1] => {
+    const settings = useSettingsStore.getState();
+    const body: Parameters<typeof updateLlmConfig>[1] = {
+      llmChain: settings.llmChain,
+    };
+    const url = settings.ollamaUrl.trim();
+    const oModel = settings.ollamaModel.trim();
+    const oAiModel = settings.openaiModel.trim();
+    const claudeModel = settings.anthropicModel.trim();
+    const pModel = settings.puterModel.trim();
+    if (url) body.ollamaUrl = url;
+    if (oModel) body.ollamaModel = oModel;
+    if (oAiModel) body.openaiModel = oAiModel;
+    if (claudeModel) body.anthropicModel = claudeModel;
+    if (pModel) body.puterModel = pModel;
+    if (settings.openaiApiKey.trim()) {
+      body.openaiApiKey = settings.openaiApiKey.trim();
+    }
+    if (settings.anthropicApiKey.trim()) {
+      body.anthropicApiKey = settings.anthropicApiKey.trim();
+    }
+    if (settings.puterAuthToken.trim()) {
+      body.puterAuthToken = settings.puterAuthToken.trim();
+    }
+    const origin =
+      typeof window !== "undefined"
+        ? normalizePuterAppOrigin(
+            settings.puterAppOrigin.trim() || window.location.origin,
+          )
+        : settings.puterAppOrigin.trim() || undefined;
+    if (origin) {
+      body.puterAppOrigin = origin;
+      useSettingsStore.getState().setPuterAppOrigin(origin);
+    }
+    return body;
+  };
+
   const applyMutation = useMutation({
     mutationFn: async () => {
       if (!token) throw new Error("Not authenticated");
-      const body: Parameters<typeof updateLlmConfig>[1] = {
-        llmChain,
-      };
-      const url = settings.ollamaUrl.trim();
-      const oModel = settings.ollamaModel.trim();
-      const oAiModel = settings.openaiModel.trim();
-      const pModel = settings.puterModel.trim();
-      if (url) body.ollamaUrl = url;
-      if (oModel) body.ollamaModel = oModel;
-      if (oAiModel) body.openaiModel = oAiModel;
-      if (pModel) body.puterModel = pModel;
-      if (settings.openaiApiKey.trim()) {
-        body.openaiApiKey = settings.openaiApiKey.trim();
-      }
-      if (settings.puterAuthToken.trim()) {
-        body.puterAuthToken = settings.puterAuthToken.trim();
-      }
-      if (typeof window !== "undefined") {
-        body.puterAppOrigin = window.location.origin;
-      }
-      return updateLlmConfig(token, body);
+      return updateLlmConfig(token, buildApplyBody());
     },
     onSuccess: (data) => {
       setApplyMsg({ ok: true, text: "Applied to agent." });
       mergeFromAgent({
         llmChain: data.llmChain,
         openaiApiKeySet: data.openaiApiKeySet,
+        anthropicApiKeySet: data.anthropicApiKeySet,
         puterAuthTokenSet: data.puterAuthTokenSet,
+        puterAppOrigin: data.puterAppOrigin,
       });
       void queryClient.invalidateQueries({ queryKey: ["agent-status"] });
       void queryClient.invalidateQueries({ queryKey: ["llm-config"] });
@@ -229,19 +301,49 @@ export function LlmProviderChain() {
   const testMutation = useMutation({
     mutationFn: async (provider: LlmProviderId) => {
       if (!token) throw new Error("Not authenticated");
+      const settings = useSettingsStore.getState();
+      const origin =
+        typeof window !== "undefined"
+          ? normalizePuterAppOrigin(
+              settings.puterAppOrigin.trim() || window.location.origin,
+            )
+          : settings.puterAppOrigin.trim() || undefined;
+
       return testLlmConnection(token, {
         provider,
         ollamaUrl: settings.ollamaUrl.trim() || undefined,
         ollamaModel: settings.ollamaModel.trim() || undefined,
         openaiApiKey: settings.openaiApiKey.trim() || undefined,
         openaiModel: settings.openaiModel.trim() || undefined,
+        anthropicApiKey: settings.anthropicApiKey.trim() || undefined,
+        anthropicModel: settings.anthropicModel.trim() || undefined,
         puterAuthToken: settings.puterAuthToken.trim() || undefined,
         puterModel: settings.puterModel.trim() || undefined,
-        puterAppOrigin:
-          typeof window !== "undefined" ? window.location.origin : undefined,
+        puterAppOrigin: origin,
       });
     },
-    onSuccess: (data) => setTestMsg({ ok: data.ok, text: data.message }),
+    onSuccess: async (data) => {
+      setTestMsg({ ok: data.ok, text: data.message });
+      if (!data.ok || !token) return;
+      try {
+        const applied = await updateLlmConfig(token, buildApplyBody());
+        setApplyMsg({ ok: true, text: "Test passed — applied to agent." });
+        mergeFromAgent({
+          llmChain: applied.llmChain,
+          openaiApiKeySet: applied.openaiApiKeySet,
+          anthropicApiKeySet: applied.anthropicApiKeySet,
+          puterAuthTokenSet: applied.puterAuthTokenSet,
+          puterAppOrigin: applied.puterAppOrigin,
+        });
+        void queryClient.invalidateQueries({ queryKey: ["agent-status"] });
+        void queryClient.invalidateQueries({ queryKey: ["llm-config"] });
+      } catch (err) {
+        setApplyMsg({
+          ok: false,
+          text: `Test passed but apply failed: ${parseApiErrorMessage(err)}`,
+        });
+      }
+    },
     onError: (err) =>
       setTestMsg({ ok: false, text: parseApiErrorMessage(err) }),
   });
@@ -264,7 +366,7 @@ export function LlmProviderChain() {
     <div className="space-y-4">
       <div className="flex items-center gap-1.5">
         <h3 className="text-sm font-semibold">LLM provider chain</h3>
-        <InfoTooltip content="Order matters: the agent tries Primary first, then 1st fallback, then 2nd fallback. Configure each provider below, then Apply to agent." />
+        <InfoTooltip content="Order matters: the agent tries Primary first, then 1st fallback, then 2nd fallback. Configure each provider below, test the key, then Apply to agent." />
       </div>
 
       {configQuery.isError && (
@@ -328,7 +430,7 @@ export function LlmProviderChain() {
         </ul>
       ) : (
         <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-          No providers in the chain yet. Add Ollama, OpenAI, or Puter.js below.
+          No providers in the chain yet. Add Ollama, OpenAI, Claude, or Puter.js below.
         </p>
       )}
 

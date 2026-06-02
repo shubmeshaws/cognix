@@ -14,7 +14,6 @@ import { useClusterStore } from "@/stores/cluster";
 export default function HealDetailPage() {
   const params = useParams();
   const healId = typeof params.id === "string" ? params.id : "";
-  const activeClusterId = useClusterStore((s) => s.activeClusterId);
   const heals = useClusterStore((s) => s.heals);
   useHeals();
 

@@ -258,11 +258,12 @@ export interface AgentStatus {
   llm: {
     ollama: { url: string; ok: boolean };
     openaiConfigured: boolean;
+    anthropicConfigured: boolean;
     puterConfigured: boolean;
   };
 }
 
-export type LlmProviderIdApi = "ollama" | "openai" | "puter";
+export type LlmProviderIdApi = "ollama" | "openai" | "anthropic" | "puter";
 
 export type LlmProviderChainApi = [
   LlmProviderIdApi | null,
@@ -275,14 +276,20 @@ export interface LlmConfigResponse {
   ollamaUrl: string;
   ollamaModel: string;
   openaiModel: string;
+  anthropicModel: string;
   puterModel: string;
   openaiApiKeySet: boolean;
   openaiApiKeyPreview: string | null;
+  anthropicApiKeySet: boolean;
+  anthropicApiKeyPreview: string | null;
   puterAuthTokenSet: boolean;
   puterAuthTokenPreview: string | null;
+  puterAppOrigin: string;
   envOllamaUrl: string;
   envOpenaiConfigured: boolean;
+  envAnthropicConfigured: boolean;
   envPuterConfigured: boolean;
+  activeChain: LlmProviderIdApi[];
 }
 
 export interface LlmConfigPatch {
@@ -291,6 +298,8 @@ export interface LlmConfigPatch {
   ollamaModel?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  anthropicApiKey?: string;
+  anthropicModel?: string;
   puterAuthToken?: string;
   puterModel?: string;
   /** Browser origin for Puter app-token exchange (e.g. http://localhost:3000). */
@@ -303,6 +312,8 @@ export interface LlmConnectionTestRequest {
   ollamaModel?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  anthropicApiKey?: string;
+  anthropicModel?: string;
   puterAuthToken?: string;
   puterModel?: string;
   puterAppOrigin?: string;

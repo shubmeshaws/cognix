@@ -61,6 +61,12 @@ function providerStatus(
         agent?.llm.openaiConfigured ?? Boolean(settings.openaiApiKey.trim());
       return ok ? settings.openaiModel : "key not set";
     }
+    case "anthropic": {
+      const ok =
+        agent?.llm.anthropicConfigured ??
+        Boolean(settings.anthropicApiKey.trim());
+      return ok ? settings.anthropicModel : "key not set";
+    }
     case "puter": {
       const ok =
         agent?.llm.puterConfigured ?? Boolean(settings.puterAuthToken.trim());

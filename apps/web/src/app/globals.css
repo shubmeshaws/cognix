@@ -2,13 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* @font-face {
+@font-face {
   font-family: 'Neotheric';
   src: local('Neotheric DEMO'), local('NeothericDEMO'), local('Neotheric'), url('/fonts/NeothericDEMO.ttf') format('truetype');
   font-weight: 400 900;
   font-style: normal;
   font-display: swap;
-} */
+}
 
 @layer base {
   :root {
@@ -162,5 +162,83 @@
 
   .panel-scroll::-webkit-scrollbar-thumb:hover {
     background: #64748b;
+  }
+
+  /* Meshy voice assistant icon — animated Icons8 PNG */
+  .meshy-voice-icon__img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-origin: center;
+  }
+
+  .meshy-voice-icon__ring {
+    position: absolute;
+    inset: -18%;
+    border-radius: 9999px;
+    border: 2px solid rgb(96 165 250 / 0.45);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .meshy-voice-icon--active .meshy-voice-icon__img {
+    animation: meshy-voice-breathe 2.2s ease-in-out infinite;
+  }
+
+  .meshy-voice-icon--active .meshy-voice-icon__ring-1 {
+    animation: meshy-voice-ripple 2.4s ease-out infinite;
+  }
+
+  .meshy-voice-icon--active .meshy-voice-icon__ring-2 {
+    animation: meshy-voice-ripple 2.4s ease-out 0.8s infinite;
+  }
+
+  .meshy-voice-icon--listening .meshy-voice-icon__img {
+    animation: meshy-voice-listen 0.85s ease-in-out infinite;
+    filter: drop-shadow(0 0 10px rgb(59 130 246 / 0.55));
+  }
+
+  .meshy-voice-icon--listening .meshy-voice-icon__ring {
+    border-color: rgb(56 189 248 / 0.65);
+  }
+
+  .meshy-voice-icon--listening .meshy-voice-icon__ring-1 {
+    animation-duration: 1.4s;
+  }
+
+  .meshy-voice-icon--listening .meshy-voice-icon__ring-2 {
+    animation-duration: 1.4s;
+    animation-delay: 0.45s;
+  }
+
+  @keyframes meshy-voice-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.06);
+    }
+  }
+
+  @keyframes meshy-voice-listen {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.12);
+    }
+  }
+
+  @keyframes meshy-voice-ripple {
+    0% {
+      transform: scale(0.72);
+      opacity: 0.55;
+    }
+    100% {
+      transform: scale(1.35);
+      opacity: 0;
+    }
   }
 }

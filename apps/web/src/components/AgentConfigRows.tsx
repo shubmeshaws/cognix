@@ -27,8 +27,11 @@ export function AgentConfigRows({
       ollamaModel: s.ollamaModel,
       openaiApiKey: s.openaiApiKey,
       openaiModel: s.openaiModel,
+      anthropicApiKey: s.anthropicApiKey,
+      anthropicModel: s.anthropicModel,
       puterAuthToken: s.puterAuthToken,
       puterModel: s.puterModel,
+      puterAppOrigin: s.puterAppOrigin,
     })),
   );
 

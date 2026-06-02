@@ -1,5 +1,5 @@
 /** LLM backends available in kubehealer. */
-export type LlmProviderId = "ollama" | "openai" | "puter";
+export type LlmProviderId = "ollama" | "openai" | "anthropic" | "puter";
 
 /** Three-slot fallback chain: primary → 1st fallback → 2nd fallback. */
 export type LlmProviderChain = [
@@ -21,6 +21,9 @@ export const DEFAULT_LLM_CHAIN: LlmProviderChain = [null, null, null];
 
 /** Puter OpenAI-compatible default (see docs.puter.com/AI/chat/). */
 export const DEFAULT_PUTER_MODEL = "gpt-5-nano";
+
+/** Default Claude model for diagnosis and chat. */
+export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 
 const LEGACY_DEFAULT_CHAIN: LlmProviderChain = ["ollama", "openai", null];
 
@@ -48,6 +51,11 @@ export const LLM_PROVIDER_CATALOG: {
     description: "OpenAI API key + model (gpt-4o-mini, etc.).",
   },
   {
+    id: "anthropic",
+    label: "Claude (Anthropic)",
+    description: "Anthropic API key + Claude model (claude-sonnet-4, etc.).",
+  },
+  {
     id: "puter",
     label: "Puter.js",
     description:
@@ -60,7 +68,7 @@ export function normalizeLlmChain(
   legacyPreference?: string,
 ): LlmProviderChain {
   if (Array.isArray(input) && input.length === 3) {
-    const ids = ["ollama", "openai", "puter"] as const;
+    const ids = ["ollama", "openai", "anthropic", "puter"] as const;
     const chain = input.map((v) =>
       typeof v === "string" && ids.includes(v as LlmProviderId)
         ? (v as LlmProviderId)

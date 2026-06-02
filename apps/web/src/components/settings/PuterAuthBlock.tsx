@@ -6,6 +6,7 @@ import { DEFAULT_PUTER_MODEL } from "@kubehealer/shared";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { normalizePuterAppOrigin } from "@/lib/puter-auth";
 import { useSettingsStore } from "@/stores/settings";
 
 const PUTER_SCRIPT = "https://js.puter.com/v2/";
@@ -28,9 +29,11 @@ function extractPuterChatText(response: unknown): string {
 export function PuterAuthBlock({
   onTest,
   testing,
+  testLabel = "Test via agent",
 }: {
   onTest: () => void;
   testing: boolean;
+  testLabel?: string;
 }) {
   const [scriptReady, setScriptReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -45,6 +48,7 @@ export function PuterAuthBlock({
   );
   const setPuterAuthToken = useSettingsStore((s) => s.setPuterAuthToken);
   const setPuterModel = useSettingsStore((s) => s.setPuterModel);
+  const setPuterAppOrigin = useSettingsStore((s) => s.setPuterAppOrigin);
 
   const refreshSession = useCallback(async () => {
     const puter = window.puter;
@@ -64,6 +68,17 @@ export function PuterAuthBlock({
     if (scriptReady) void refreshSession();
   }, [scriptReady, refreshSession]);
 
+  const saveDashboardToken = () => {
+    const trimmed = puterAuthToken.trim();
+    if (!trimmed) {
+      setError("Paste your Puter dashboard auth token first.");
+      return;
+    }
+    setError(null);
+    setPuterAuthToken(trimmed);
+    setPuterAppOrigin(normalizePuterAppOrigin(window.location.origin));
+  };
+
   const handleSignIn = async () => {
     const puter = window.puter;
     if (!puter) {
@@ -77,12 +92,15 @@ export function PuterAuthBlock({
 
     try {
       const res = await puter.auth.signIn();
-      if (!res.success || !res.token) {
-        setError(res.error ?? res.msg ?? "Puter sign-in did not return a token.");
+      if (!res.success) {
+        setError(res.error ?? res.msg ?? "Puter sign-in failed.");
         return;
       }
-      setPuterAuthToken(res.token);
       setUsername(res.username ?? null);
+      setPuterAppOrigin(normalizePuterAppOrigin(window.location.origin));
+      setBrowserTestMsg(
+        "Signed in for browser chat. Paste your dashboard auth token below for Test via agent / Meshy.",
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Puter sign-in failed");
     } finally {
@@ -100,6 +118,7 @@ export function PuterAuthBlock({
         await puter.auth.signOut();
       }
       setPuterAuthToken("");
+      setPuterAppOrigin("");
       setUsername(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-out failed");
@@ -139,7 +158,18 @@ export function PuterAuthBlock({
     }
   };
 
-  const signedIn = Boolean(puterAuthToken) || Boolean(username);
+  const handleAgentTest = () => {
+    if (!puterAuthToken.trim()) {
+      setError(
+        "Paste your Puter dashboard auth token from puter.com/dashboard, then Save dashboard token.",
+      );
+      return;
+    }
+    saveDashboardToken();
+    onTest();
+  };
+
+  const browserSignedIn = Boolean(username);
   const fieldClass =
     "w-full rounded-md border bg-background px-3 py-2 text-sm";
 
@@ -152,17 +182,22 @@ export function PuterAuthBlock({
       />
 
       <p className="text-xs text-muted-foreground">
-        Sign in with Puter (Google, etc.). Default model is{" "}
-        <code className="rounded bg-muted px-1">{DEFAULT_PUTER_MODEL}</code> per
-        Puter docs. Other examples:{" "}
-        <code className="rounded bg-muted px-1">gpt-5.4-nano</code>,{" "}
-        <code className="rounded bg-muted px-1">openai/gpt-5.2-chat</code>.
-        After sign-in, use <strong>Test in browser</strong>, then{" "}
-        <strong>Test via agent</strong>, then <strong>Apply to agent</strong>.
+        <strong>Browser:</strong> sign in with Puter.js (Google, etc.) and use{" "}
+        <strong>Test in browser</strong>.{" "}
+        <strong>Agent / Meshy:</strong> copy your auth token from{" "}
+        <a
+          href="https://puter.com/dashboard"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline"
+        >
+          puter.com/dashboard
+        </a>{" "}
+        — Puter.js sign-in tokens cannot be used on the agent.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
-        {!signedIn ? (
+        {!browserSignedIn ? (
           <Button
             type="button"
             size="sm"
@@ -181,18 +216,8 @@ export function PuterAuthBlock({
         ) : (
           <>
             <span className="text-sm text-emerald-700">
-              Signed in{username ? ` as ${username}` : ""}
-              {puterTokenConfiguredOnAgent ? " · synced to agent" : ""}
+              Browser signed in{username ? ` as ${username}` : ""}
             </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => void handleSignIn()}
-            >
-              Refresh session
-            </Button>
             <Button
               type="button"
               size="sm"
@@ -204,9 +229,35 @@ export function PuterAuthBlock({
             </Button>
           </>
         )}
+        {puterTokenConfiguredOnAgent && (
+          <span className="text-xs text-emerald-700">Dashboard token on agent</span>
+        )}
       </div>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
+
+      <label className="block space-y-1 text-xs">
+        <span className="font-medium">Dashboard auth token (for agent)</span>
+        <input
+          type="password"
+          className={fieldClass}
+          value={puterAuthToken}
+          onChange={(e) => setPuterAuthToken(e.target.value)}
+          placeholder="Paste from puter.com/dashboard → Account → Auth Token"
+        />
+      </label>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy || !puterAuthToken.trim()}
+          onClick={saveDashboardToken}
+        >
+          Save dashboard token
+        </Button>
+      </div>
 
       <label className="block space-y-1 text-xs">
         <span className="font-medium">Model</span>
@@ -223,7 +274,7 @@ export function PuterAuthBlock({
           type="button"
           size="sm"
           variant="outline"
-          disabled={busy || !signedIn}
+          disabled={busy || !browserSignedIn}
           onClick={() => void handleBrowserTest()}
         >
           Test in browser
@@ -232,10 +283,10 @@ export function PuterAuthBlock({
           type="button"
           size="sm"
           variant="outline"
-          disabled={testing || !puterAuthToken}
-          onClick={onTest}
+          disabled={testing || busy || !puterAuthToken.trim()}
+          onClick={handleAgentTest}
         >
-          Test via agent
+          {testLabel}
         </Button>
       </div>
 

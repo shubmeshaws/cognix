@@ -7,15 +7,19 @@ import {
 import type { Env } from "../config/env.js";
 import {
   getEffectiveLlmChain,
+  getEffectiveAnthropicKey,
+  getEffectiveAnthropicModel,
   getEffectiveOllamaModel,
   getEffectiveOllamaUrl,
   getEffectiveOpenAiKey,
   getEffectiveOpenAiModel,
+  getEffectivePuterAppOrigin,
   getEffectivePuterAuthToken,
   getEffectivePuterModel,
   getLlmRuntime,
   maskApiKey,
   setLlmRuntime,
+  getConfiguredChain,
   type LlmRuntimeOverrides,
 } from "../config/llm-runtime.js";
 import {
@@ -23,7 +27,8 @@ import {
   ollamaModelMatches,
   resolveOllamaModel,
 } from "../llm/ollama-models.js";
-import { callOpenAi } from "../llm/providers/openai.js";
+import { callOpenAiCompat } from "../llm/providers/openai-compat.js";
+import { callAnthropic } from "../llm/providers/anthropic.js";
 import { callPuter } from "../llm/providers/puter.js";
 
 export interface LlmConfigResponse {
@@ -31,18 +36,25 @@ export interface LlmConfigResponse {
   ollamaUrl: string;
   ollamaModel: string;
   openaiModel: string;
+  anthropicModel: string;
   puterModel: string;
   openaiApiKeySet: boolean;
   openaiApiKeyPreview: string | null;
+  anthropicApiKeySet: boolean;
+  anthropicApiKeyPreview: string | null;
   puterAuthTokenSet: boolean;
   puterAuthTokenPreview: string | null;
+  puterAppOrigin: string;
   envOllamaUrl: string;
   envOpenaiConfigured: boolean;
+  envAnthropicConfigured: boolean;
   envPuterConfigured: boolean;
+  activeChain: LlmProviderId[];
 }
 
 export function getLlmConfigResponse(env: Env): LlmConfigResponse {
   const openaiKey = getEffectiveOpenAiKey(env);
+  const anthropicKey = getEffectiveAnthropicKey(env);
   const puterToken = getEffectivePuterAuthToken(env);
 
   return {
@@ -50,14 +62,20 @@ export function getLlmConfigResponse(env: Env): LlmConfigResponse {
     ollamaUrl: getEffectiveOllamaUrl(env),
     ollamaModel: getEffectiveOllamaModel(),
     openaiModel: getEffectiveOpenAiModel(),
+    anthropicModel: getEffectiveAnthropicModel(),
     puterModel: getEffectivePuterModel(),
     openaiApiKeySet: Boolean(openaiKey),
     openaiApiKeyPreview: maskApiKey(openaiKey),
+    anthropicApiKeySet: Boolean(anthropicKey),
+    anthropicApiKeyPreview: maskApiKey(anthropicKey),
     puterAuthTokenSet: Boolean(puterToken),
     puterAuthTokenPreview: maskApiKey(puterToken),
+    puterAppOrigin: getEffectivePuterAppOrigin(env),
     envOllamaUrl: env.OLLAMA_URL,
     envOpenaiConfigured: Boolean(env.OPENAI_API_KEY),
+    envAnthropicConfigured: Boolean(env.ANTHROPIC_API_KEY),
     envPuterConfigured: Boolean(env.PUTER_AUTH_TOKEN),
+    activeChain: getConfiguredChain(env),
   };
 }
 
@@ -69,7 +87,6 @@ export async function applyLlmConfigPatch(
   if (patch.llmChain !== undefined) {
     normalized.llmChain = normalizeLlmChain(patch.llmChain);
   }
-  delete (normalized as { puterAppOrigin?: string }).puterAppOrigin;
   setLlmRuntime(normalized);
   return getLlmConfigResponse(env);
 }
@@ -139,7 +156,40 @@ export async function testOpenAiConnection(
     };
   }
   try {
-    await callOpenAi(key, "You are a test.", "Reply with OK", 15_000, m);
+    await callOpenAiCompat(
+      "https://api.openai.com/v1",
+      key,
+      "You are a test.",
+      "Reply with OK",
+      15_000,
+      m,
+      { jsonMode: false },
+    );
+    return { ok: true, message: `Connected — model “${m}” responded` };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : "Connection failed",
+    };
+  }
+}
+
+export async function testAnthropicConnection(
+  env: Env,
+  apiKey?: string,
+  model?: string,
+): Promise<{ ok: boolean; message: string }> {
+  const key = apiKey?.trim() || getEffectiveAnthropicKey(env);
+  const m = model?.trim() || getEffectiveAnthropicModel();
+  if (!key) {
+    return {
+      ok: false,
+      message:
+        "Not configured — add a Claude API key in Settings to test (optional).",
+    };
+  }
+  try {
+    await callAnthropic(key, "You are a test.", "Reply with OK", 20_000, m);
     return { ok: true, message: `Connected — model “${m}” responded` };
   } catch (err) {
     return {
@@ -150,11 +200,7 @@ export async function testOpenAiConnection(
 }
 
 function puterAppOrigin(env: Env, override?: string): string {
-  return (
-    override?.trim() ||
-    env.PUTER_APP_ORIGIN?.trim() ||
-    "http://localhost:3000"
-  );
+  return override?.trim() || getEffectivePuterAppOrigin(env);
 }
 
 export async function testPuterConnection(
@@ -188,11 +234,12 @@ export async function testPuterConnection(
     const raw = err instanceof Error ? err.message : "Connection failed";
     const needsReauth =
       raw.includes("token_auth_failed") ||
-      raw.includes("token exchange failed");
+      raw.includes("token exchange failed") ||
+      raw.includes("user sessions");
     return {
       ok: false,
       message: needsReauth
-        ? `${raw} — sign in with Puter again in Settings, then Apply to agent.`
+        ? `${raw} — in Settings, sign in with Puter (token is exchanged in the browser), then Apply to agent. Or paste a dashboard auth token from puter.com/dashboard.`
         : raw,
     };
   }
@@ -206,6 +253,8 @@ export async function testLlmProvider(
     ollamaModel?: string;
     openaiApiKey?: string;
     openaiModel?: string;
+    anthropicApiKey?: string;
+    anthropicModel?: string;
     puterAuthToken?: string;
     puterModel?: string;
     puterAppOrigin?: string;
@@ -216,6 +265,12 @@ export async function testLlmProvider(
       return testOllamaConnection(env, opts.ollamaUrl, opts.ollamaModel);
     case "openai":
       return testOpenAiConnection(env, opts.openaiApiKey, opts.openaiModel);
+    case "anthropic":
+      return testAnthropicConnection(
+        env,
+        opts.anthropicApiKey,
+        opts.anthropicModel,
+      );
     case "puter":
       return testPuterConnection(
         env,

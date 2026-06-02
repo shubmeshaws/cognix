@@ -1,4 +1,5 @@
 export {
+  DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_LLM_CHAIN,
   DEFAULT_PUTER_MODEL,
   isLegacyDefaultLlmChain,
@@ -93,6 +94,42 @@ export {
   normalizeHealRuleIds,
   normalizeHealRuleModes,
 } from "./heal-rules.js";
+
+export {
+  DEVOPS_ABBREVIATIONS,
+  DEVOPS_PHRASE_REPLACEMENTS,
+  DEVOPS_TOPIC_TERMS,
+  meshyOffTopicMessage,
+  MESHY_OFF_TOPIC_MESSAGE,
+  normalizeKubernetesInput,
+  type NormalizeKubernetesInputResult,
+} from "./meshy-kubernetes-input.js";
+
+export {
+  asksMeshyCount,
+  asksMeshyList,
+  asksMeshyName,
+  buildMeshyIntentHint,
+  findMatchedDevOpsTerms,
+  inferMeshyResourceFocus,
+  isExplicitPodListRequest,
+  isKubernetesRelated,
+  type MeshyResourceFocus,
+} from "./meshy-intent.js";
+
+export {
+  buildClarificationQuestion,
+  inferTopicFromHistory,
+  isAffirmativeReply,
+  isAmbiguousListRequest,
+  isNegativeReply,
+  parsePendingClarification,
+  resolveMeshyConversationTurn,
+  type MeshyConversationResolution,
+  type MeshyHistoryTurn,
+  type MeshyListResource,
+  type MeshyPendingAction,
+} from "./meshy-conversation.js";
 
 export type ClusterAuthMode = "kubeconfig" | "in_cluster";
 

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "WATCHPACK_POLLING=true next dev --port 3000 -H 127.0.0.1",
+    "dev": "WATCHPACK_POLLING=true next dev --port 3000 -H localhost",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

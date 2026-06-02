@@ -4,12 +4,9 @@ import { useState, useMemo } from "react";
 import { 
   Server, 
   Cpu, 
-  Database, 
   Activity, 
   Clock, 
   AlertTriangle, 
-  CheckCircle2, 
-  Info, 
   ChevronRight, 
   RefreshCw, 
   Loader2, 
@@ -17,7 +14,6 @@ import {
   Search,
   Filter,
   Terminal,
-  ArrowUpRight
 } from "lucide-react";
 
 import { Topbar } from "@/components/dashboard/Topbar";

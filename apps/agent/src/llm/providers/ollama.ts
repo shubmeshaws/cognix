@@ -5,47 +5,92 @@ export interface LlmCompletionResult {
   totalTokens?: number;
 }
 
+export interface OllamaChatResponse {
+  message: { role: string; content: string };
+  prompt_eval_count?: number;
+  eval_count?: number;
+}
+
+/** @deprecated Use callOllamaChat instead */
 export interface OllamaGenerateResponse {
   response: string;
   prompt_eval_count?: number;
   eval_count?: number;
 }
 
+// Global promise queue to serialize Ollama calls.
+// This prevents concurrent requests from overloading local Ollama CPU instances,
+// which is a major cause of timeouts and performance degradation in high-pod clusters.
+let ollamaQueue: Promise<any> = Promise.resolve();
+
+/**
+ * Call Ollama using the /api/chat endpoint (preferred for conversational use).
+ * This is significantly faster than /api/generate for chat-style interactions.
+ * Invocations are queued globally to avoid overloading local CPU-based models.
+ */
 export async function callOllama(
   baseUrl: string,
   system: string,
   prompt: string,
   timeoutMs = 8_000,
-  model = "llama3.1:8b",
+  model = "llama3.2:1b",
 ): Promise<LlmCompletionResult> {
-  const url = new URL("/api/generate", baseUrl).toString();
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      system,
-      prompt,
-      stream: false,
-    }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  const url = new URL("/api/chat", baseUrl).toString();
 
-  if (!res.ok) {
-    throw new Error(`Ollama request failed: ${res.status} ${res.statusText}`);
-  }
+  // Capture the current tail of the queue
+  const currentQueueTail = ollamaQueue;
 
-  const data = (await res.json()) as OllamaGenerateResponse;
-  const promptTokens = data.prompt_eval_count;
-  const completionTokens = data.eval_count;
+  const resultPromise = (async () => {
+    // Wait for the previous request to finish (succeed or fail)
+    await currentQueueTail.catch(() => {});
 
-  return {
-    text: data.response,
-    promptTokens,
-    completionTokens,
-    totalTokens:
-      promptTokens !== undefined && completionTokens !== undefined
-        ? promptTokens + completionTokens
-        : undefined,
-  };
+    console.log(`[callOllama] [START] baseUrl="${baseUrl}" model="${model}" timeoutMs=${timeoutMs}`);
+
+    const messages = [
+      { role: "system", content: system },
+      { role: "user", content: prompt },
+    ];
+
+    const startTime = performance.now();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (!res.ok) {
+      let bodyText = "";
+      try {
+        bodyText = await res.text();
+      } catch {}
+      throw new Error(`Ollama request failed: ${res.status} ${res.statusText} - Body: ${bodyText}`);
+    }
+
+    const data = (await res.json()) as OllamaChatResponse;
+    const elapsed = Math.round(performance.now() - startTime);
+    console.log(`[callOllama] [SUCCESS] model="${model}" latency=${elapsed}ms`);
+
+    const promptTokens = data.prompt_eval_count;
+    const completionTokens = data.eval_count;
+
+    return {
+      text: data.message.content,
+      promptTokens,
+      completionTokens,
+      totalTokens:
+        promptTokens !== undefined && completionTokens !== undefined
+          ? promptTokens + completionTokens
+          : undefined,
+    };
+  })();
+
+  // Chain this execution to become the new queue tail
+  ollamaQueue = resultPromise;
+
+  return resultPromise;
 }

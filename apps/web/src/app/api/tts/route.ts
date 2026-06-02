@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { cleanTextForSpeech } from "@/lib/voice";
+
 export async function POST(request: Request) {
   try {
     const { text, token } = await request.json();
@@ -8,7 +10,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing text or token" }, { status: 400 });
     }
 
-    const cleanText = text.replace(/,/g, "").replace(/\./g, ""); // strip pauses for cloud model
+    const cleanText = cleanTextForSpeech(String(text));
     const response = await fetch(
       "https://api-inference.huggingface.co/models/facebook/mms-tts-eng",
       {
@@ -36,9 +38,10 @@ export async function POST(request: Request) {
         "Content-Type": response.headers.get("Content-Type") || "audio/flac",
       },
     });
-  } catch (error: any) {
+  } catch (error) {
+    const errMessage = error instanceof Error ? error.message : "Internal Server Error";
     return NextResponse.json(
-      { error: error.message || "Internal Server Error" },
+      { error: errMessage },
       { status: 500 }
     );
   }

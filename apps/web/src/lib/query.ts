@@ -196,6 +196,7 @@ export function usePendingApprovals() {
     clusterId,
     query.data,
     query.isFetched,
+    query.isError,
     heals,
     terminalLines,
     syncPendingApprovals,

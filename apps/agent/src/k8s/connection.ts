@@ -22,6 +22,7 @@ import {
   type V1Scale,
   type V1StatefulSet,
   type V1Node,
+  type V1Service,
 } from "@kubernetes/client-node";
 import { bumpMemoryLimit } from "../healer/memory.js";
 import { raceTimeout } from "../lib/timeout.js";
@@ -233,6 +234,92 @@ export class ClusterConnection {
     }
   }
 
+  async listDeployments(namespace?: string): Promise<V1Deployment[] | null> {
+    const { apps } = this.requireClients();
+    const targets = this.resolveNamespaces(namespace);
+
+    if (targets === "all") {
+      const result = await this.invoke(() =>
+        apps.listDeploymentForAllNamespaces({}),
+      );
+      return result?.items ?? null;
+    }
+
+    const items: V1Deployment[] = [];
+    for (const ns of targets) {
+      const result = await this.invoke(() =>
+        apps.listNamespacedDeployment({ namespace: ns }),
+      );
+      if (result === null) return null;
+      items.push(...(result.items ?? []));
+    }
+    return items;
+  }
+
+  async listDeploymentsWithTimeout(timeoutMs: number): Promise<V1Deployment[] | null> {
+    try {
+      return await Promise.race([
+        this.listDeployments(),
+        new Promise<never>((_, reject) => {
+          setTimeout(
+            () =>
+              reject(new Error(`listDeployments timed out after ${timeoutMs}ms`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } catch (err) {
+      this.log?.error(
+        { clusterId: this.config.id, err },
+        "listDeploymentsWithTimeout failed",
+      );
+      return null;
+    }
+  }
+
+  async listServices(namespace?: string): Promise<V1Service[] | null> {
+    const { core } = this.requireClients();
+    const targets = this.resolveNamespaces(namespace);
+
+    if (targets === "all") {
+      const result = await this.invoke(() =>
+        core.listServiceForAllNamespaces({}),
+      );
+      return result?.items ?? null;
+    }
+
+    const items: V1Service[] = [];
+    for (const ns of targets) {
+      const result = await this.invoke(() =>
+        core.listNamespacedService({ namespace: ns }),
+      );
+      if (result === null) return null;
+      items.push(...(result.items ?? []));
+    }
+    return items;
+  }
+
+  async listServicesWithTimeout(timeoutMs: number): Promise<V1Service[] | null> {
+    try {
+      return await Promise.race([
+        this.listServices(),
+        new Promise<never>((_, reject) => {
+          setTimeout(
+            () =>
+              reject(new Error(`listServices timed out after ${timeoutMs}ms`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } catch (err) {
+      this.log?.error(
+        { clusterId: this.config.id, err },
+        "listServicesWithTimeout failed",
+      );
+      return null;
+    }
+  }
+
   async getPodLogs(
     name: string,
     ns: string,
@@ -269,7 +356,15 @@ export class ClusterConnection {
       }
     }
 
-    return read(false);
+    try {
+      return await read(false);
+    } catch (err) {
+      this.log?.debug?.(
+        { pod: name, namespace: ns },
+        "failed to read current container logs — container may not have started",
+      );
+      return null;
+    }
   }
 
   async getPodEvents(
@@ -915,6 +1010,67 @@ export class ClusterConnection {
     const { core } = this.requireClients();
     const list = await this.invoke(() => core.listNode());
     return list?.items ?? null;
+  }
+
+  /** Cluster-scoped CRDs e.g. Karpenter NodePool / NodeClaim. */
+  async listClusterCustomObjects(
+    group: string,
+    version: string,
+    plural: string,
+  ): Promise<Array<{ name: string; phase?: string }> | null> {
+    const { custom } = this.requireClients();
+    try {
+      const result = await this.invoke(() =>
+        custom.listClusterCustomObject({ group, version, plural }),
+      );
+      const items =
+        (
+          result as {
+            items?: Array<{
+              metadata?: { name?: string };
+              status?: { phase?: string; conditions?: Array<{ type?: string; status?: string }> };
+            }>;
+          }
+        )?.items ?? [];
+      return items.map((item) => ({
+        name: item.metadata?.name ?? "unknown",
+        phase:
+          item.status?.phase ??
+          item.status?.conditions?.find((c) => c.type === "Ready")?.status,
+      }));
+    } catch {
+      return null;
+    }
+  }
+
+  async listClusterCustomObjectsWithTimeout(
+    group: string,
+    version: string,
+    plural: string,
+    timeoutMs: number,
+  ): Promise<Array<{ name: string; phase?: string }> | null> {
+    try {
+      return await Promise.race([
+        this.listClusterCustomObjects(group, version, plural),
+        new Promise<never>((_, reject) => {
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `listClusterCustomObjects timed out after ${timeoutMs}ms`,
+                ),
+              ),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } catch (err) {
+      this.log?.error(
+        { clusterId: this.config.id, group, plural, err },
+        "listClusterCustomObjectsWithTimeout failed",
+      );
+      return null;
+    }
   }
 }
 

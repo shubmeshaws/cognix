@@ -23,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import {
   computePhaseMarkers,
   downloadTextFile,
-  formatLinePlain,
   formatTerminalTimestamp,
   sessionToPlainText,
   type PhaseMarker,
@@ -467,7 +466,6 @@ export function Terminal({
         <ReplayControls
           playing={playing}
           speed={speed}
-          atEnd={atEnd}
           onPlay={() => {
             if (atEnd) setPlayhead(0);
             setPlaying(true);
@@ -589,7 +587,6 @@ function PhaseTimeline({
 function ReplayControls({
   playing,
   speed,
-  atEnd,
   onPlay,
   onPause,
   onSpeedChange,
@@ -598,7 +595,6 @@ function ReplayControls({
 }: {
   playing: boolean;
   speed: Speed;
-  atEnd: boolean;
   onPlay: () => void;
   onPause: () => void;
   onSpeedChange: (s: Speed) => void;

@@ -2,7 +2,10 @@ import { DEFAULT_PUTER_MODEL } from "@kubehealer/shared";
 
 import { callOpenAiCompat } from "./openai-compat.js";
 import type { LlmCompletionResult } from "./ollama.js";
-import { callPuterDriver } from "./puter-driver.js";
+import {
+  callPuterDriver,
+  callPuterDriverWithAppToken,
+} from "./puter-driver.js";
 
 export const PUTER_OPENAI_BASE = "https://api.puter.com/puterai/openai/v1";
 
@@ -12,9 +15,23 @@ function isUserSessionOnlyError(err: unknown): boolean {
   return msg.includes("user sessions") || msg.includes("only available to user");
 }
 
+function isPuterAuthError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    isUserSessionOnlyError(err) ||
+    msg.includes("token exchange failed") ||
+    msg.includes("token_auth_failed") ||
+    msg.includes("401") ||
+    msg.includes("403")
+  );
+}
+
 /**
- * Puter LLM call: try OpenAI-compatible puterai (dashboard tokens), then
- * drivers/call with session token exchange (Puter.js sign-in tokens).
+ * Puter LLM call:
+ * 1. OpenAI-compatible puterai (dashboard auth tokens)
+ * 2. drivers/call with app token (browser-exchanged Puter.js tokens)
+ * 3. Session token exchange + drivers/call (legacy fallback)
  */
 export async function callPuter(
   authToken: string,
@@ -35,7 +52,22 @@ export async function callPuter(
       { jsonMode: false, origin: appOrigin },
     );
   } catch (err) {
-    if (!isUserSessionOnlyError(err)) {
+    if (!isUserSessionOnlyError(err) && !isPuterAuthError(err)) {
+      throw err;
+    }
+  }
+
+  try {
+    return await callPuterDriverWithAppToken(
+      authToken,
+      system,
+      prompt,
+      model,
+      appOrigin,
+      timeoutMs,
+    );
+  } catch (err) {
+    if (!isPuterAuthError(err)) {
       throw err;
     }
   }

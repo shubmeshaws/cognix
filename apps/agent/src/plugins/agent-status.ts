@@ -5,6 +5,7 @@ import { normalizeLlmChain } from "@kubehealer/shared";
 
 import type { ServerDeps } from "../context/deps.js";
 import {
+  getEffectiveAnthropicKey,
   getEffectiveOllamaUrl,
   getEffectiveOpenAiKey,
   getEffectivePuterAuthToken,
@@ -21,11 +22,13 @@ import {
   testTeamsConnection,
 } from "../services/teams-config.js";
 
+const llmProviderIdSchema = z.enum(["ollama", "openai", "anthropic", "puter"]);
+
 const llmChainSchema = z
   .tuple([
-    z.enum(["ollama", "openai", "puter"]).nullable(),
-    z.enum(["ollama", "openai", "puter"]).nullable(),
-    z.enum(["ollama", "openai", "puter"]).nullable(),
+    llmProviderIdSchema.nullable(),
+    llmProviderIdSchema.nullable(),
+    llmProviderIdSchema.nullable(),
   ])
   .optional();
 
@@ -48,6 +51,7 @@ export const agentStatusPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async
     }
 
     const openaiKey = getEffectiveOpenAiKey(opts.deps.env);
+    const anthropicKey = getEffectiveAnthropicKey(opts.deps.env);
     const puterToken = getEffectivePuterAuthToken(opts.deps.env);
 
     return {
@@ -65,6 +69,7 @@ export const agentStatusPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async
           ok: ollamaOk,
         },
         openaiConfigured: Boolean(openaiKey),
+        anthropicConfigured: Boolean(anthropicKey),
         puterConfigured: Boolean(puterToken),
       },
       teams: {
@@ -121,6 +126,8 @@ export const agentStatusPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async
         ollamaModel: z.string().min(1).max(128).optional(),
         openaiApiKey: z.string().min(1).optional(),
         openaiModel: z.string().min(1).max(128).optional(),
+        anthropicApiKey: z.string().min(1).optional(),
+        anthropicModel: z.string().min(1).max(128).optional(),
         puterAuthToken: z.string().min(1).optional(),
         puterModel: z.string().min(1).max(128).optional(),
         puterAppOrigin: z.string().url().optional(),
@@ -183,11 +190,13 @@ export const agentStatusPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async
   app.post("/llm-config/test", async (request, reply) => {
     const body = z
       .object({
-        provider: z.enum(["ollama", "openai", "puter"]),
+        provider: llmProviderIdSchema,
         ollamaUrl: z.string().url().optional(),
         ollamaModel: z.string().min(1).optional(),
         openaiApiKey: z.string().min(1).optional(),
         openaiModel: z.string().min(1).optional(),
+        anthropicApiKey: z.string().min(1).optional(),
+        anthropicModel: z.string().min(1).optional(),
         puterAuthToken: z.string().min(1).optional(),
         puterModel: z.string().min(1).optional(),
         puterAppOrigin: z.string().url().optional(),

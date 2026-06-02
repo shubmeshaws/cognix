@@ -17,6 +17,7 @@ import { clustersPlugin } from "./plugins/clusters.js";
 import { healsPlugin } from "./plugins/heals.js";
 import { podsPlugin } from "./plugins/pods.js";
 import { nodesPlugin } from "./plugins/nodes.js";
+import { copilotPlugin } from "./plugins/copilot.js";
 import { runHealPipeline } from "./services/heal-pipeline.js";
 import { ClusterRegistryService } from "./services/clusters.js";
 import { WatcherService } from "./services/watcher.js";
@@ -87,6 +88,7 @@ export async function buildServer(env: Env): Promise<BuildServerResult> {
   await app.register(healsPlugin, { prefix: "/api/heals", deps });
   await app.register(alertsPlugin, { prefix: "/api/alerts", deps });
   await app.register(agentStatusPlugin, { prefix: "/api/agent", deps });
+  await app.register(copilotPlugin, { prefix: "/api/copilot", deps });
 
   app.get("/health", async () => ({ status: "ok" }));
 
