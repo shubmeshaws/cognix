@@ -17,10 +17,10 @@ const baiJamjuree = Bai_Jamjuree({
 });
 
 export const metadata: Metadata = {
-  title: "REZOLV",
+  title: "Cognix",
   description: "AI-powered Kubernetes pod healing",
   icons: {
-    icon: [{ url: "/brand/rezolv-mark.png", type: "image/png" }],
+    icon: [{ url: "/brand/cognix-mark.svg", type: "image/svg+xml" }],
   },
 };
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { RezolvLogo } from "@/components/brand/RezolvLogo";
+import { CognixLogo } from "@/components/brand/CognixLogo";
 import {
   Bell,
   Box,
@@ -76,8 +76,8 @@ export function Sidebar() {
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-[200px] flex-col border-r bg-card">
-      <div className="border-b px-4 py-5">
-        <RezolvLogo variant="sidebar" showTagline />
+      <div className="border-b px-3 py-3">
+        <CognixLogo variant="sidebar" />
       </div>
 
       <nav className="flex-1 space-y-0.5 px-2 py-3">

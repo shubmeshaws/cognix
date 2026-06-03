@@ -94,7 +94,7 @@ export default function HealLogPage() {
             <Zap className="mx-auto h-10 w-10 text-muted-foreground/30 mb-3" />
             <h3 className="text-sm font-semibold text-foreground">No heal events yet</h3>
             <p className="mt-1 text-xs text-muted-foreground max-w-sm mx-auto">
-              Rezolv will automatically detect cluster issues and execute auto-healing recipes in real time when anomalies trigger.
+              Cognix will automatically detect cluster issues and execute auto-healing recipes in real time when anomalies trigger.
             </p>
           </div>
         ) : (

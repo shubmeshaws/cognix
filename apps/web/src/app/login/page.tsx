@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { RezolvLogo } from "@/components/brand/RezolvLogo";
+import { CognixLogo } from "@/components/brand/CognixLogo";
 import { signIn } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { isAuthDisabled } from "@/lib/auth-disabled";
@@ -12,7 +12,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
       <div className="flex flex-col items-center gap-3 text-center">
-        <RezolvLogo variant="hero" markSize={60} />
+        <CognixLogo variant="hero" markSize={76} />
         <p className="text-muted-foreground">
           Sign in to monitor and heal your clusters
         </p>
