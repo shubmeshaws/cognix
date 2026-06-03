@@ -27,6 +27,7 @@ import {
   getTeamsConfigResponse,
   testTeamsConnection,
 } from "../services/teams-config.js";
+import { getSetupHealth } from "../services/setup-health.js";
 
 const llmProviderIdSchema = z.enum(["ollama", "openai", "anthropic", "puter"]);
 
@@ -43,6 +44,10 @@ export const agentStatusPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async
   opts,
 ) => {
   app.addHook("onRequest", app.authenticate);
+
+  app.get("/setup-health", async () => {
+    return getSetupHealth(opts.deps);
+  });
 
   app.get("/status", async () => {
     const ollamaUrl = getEffectiveOllamaUrl(opts.deps.env);

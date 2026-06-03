@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { isJobOwnedWorkload, matchScaledJobName } from "./workload.js";
+import {
+  isJobOwnedPod,
+  isWorkerOwnedPod,
+  isWorkerOwnedWorkload,
+  matchScaledJobName,
+  shouldSkipJobPodHeal,
+  shouldSkipWorkerPodHeal,
+} from "./workload.js";
 
 function inferScaledJobNameFromJob(jobName: string): string | null {
   const marker = "-scaledjob";
@@ -41,16 +48,126 @@ describe("matchScaledJobName", () => {
   });
 });
 
-describe("isJobOwnedWorkload", () => {
-  it("returns true for batch workload kinds", () => {
-    assert.equal(isJobOwnedWorkload({ kind: "Job", name: "x", namespace: "ns" }), true);
-    assert.equal(isJobOwnedWorkload({ kind: "CronJob", name: "x", namespace: "ns" }), true);
-    assert.equal(isJobOwnedWorkload({ kind: "ScaledJob", name: "x", namespace: "ns" }), true);
+describe("isJobOwnedPod", () => {
+  it("detects owner refs, labels, and scaledjob pod names", () => {
+    assert.equal(
+      isJobOwnedPod({
+        metadata: {
+          name: "batch-1-abc",
+          ownerReferences: [{ kind: "Job", name: "batch-1" }],
+        },
+      }),
+      true,
+    );
+    assert.equal(
+      isJobOwnedPod({
+        metadata: {
+          name: "batch-1-abc",
+          labels: { "batch.kubernetes.io/job-name": "batch-1" },
+        },
+      }),
+      true,
+    );
+    assert.equal(
+      isJobOwnedPod({
+        metadata: {
+          name: "user-badge-batch-processor-scaledjob-mgt46-fztz2",
+        },
+      }),
+      true,
+    );
+    assert.equal(
+      isJobOwnedPod({
+        metadata: {
+          name: "nv-sms-skills-ts-outbound-delivery-worker-7dc57db65f-c9j88",
+          ownerReferences: [{ kind: "ReplicaSet", name: "worker-7dc57db65f" }],
+        },
+      }),
+      false,
+    );
   });
+});
 
-  it("returns false for long-running workload kinds", () => {
-    assert.equal(isJobOwnedWorkload({ kind: "Deployment", name: "x", namespace: "ns" }), false);
-    assert.equal(isJobOwnedWorkload({ kind: "StatefulSet", name: "x", namespace: "ns" }), false);
-    assert.equal(isJobOwnedWorkload(null), false);
+describe("shouldSkipJobPodHeal", () => {
+  it("skips only when job pods are disabled", () => {
+    const scaledJobPod = {
+      metadata: {
+        name: "user-badge-batch-processor-scaledjob-mgt46-fztz2",
+      },
+    };
+
+    assert.equal(shouldSkipJobPodHeal(scaledJobPod, null, false), true);
+    assert.equal(shouldSkipJobPodHeal(scaledJobPod, null, true), false);
+    assert.equal(
+      shouldSkipJobPodHeal(
+        { metadata: { name: "api-abc" } },
+        { kind: "Deployment", name: "api", namespace: "default" },
+        false,
+      ),
+      false,
+    );
+  });
+});
+
+describe("isWorkerOwnedPod", () => {
+  it("detects worker deployment pods but not batch jobs", () => {
+    assert.equal(
+      isWorkerOwnedPod({
+        metadata: {
+          name: "nv-sms-skills-ts-outbound-delivery-worker-7dc57db65f-c9j88",
+        },
+      }),
+      true,
+    );
+    assert.equal(
+      isWorkerOwnedPod({
+        metadata: {
+          name: "user-badge-batch-processor-scaledjob-mgt46-fztz2",
+        },
+      }),
+      false,
+    );
+    assert.equal(
+      isWorkerOwnedPod({
+        metadata: {
+          name: "api-7dc57db65f-c9j88",
+          labels: { app: "payments-api" },
+        },
+      }),
+      false,
+    );
+  });
+});
+
+describe("shouldSkipWorkerPodHeal", () => {
+  it("skips only when worker deployments are disabled", () => {
+    const workerPod = {
+      metadata: {
+        name: "nv-sms-skills-ts-outbound-delivery-worker-658d7748dd-j44s7",
+      },
+    };
+
+    assert.equal(shouldSkipWorkerPodHeal(workerPod, null, false), true);
+    assert.equal(shouldSkipWorkerPodHeal(workerPod, null, true), false);
+    assert.equal(
+      shouldSkipWorkerPodHeal(
+        workerPod,
+        {
+          kind: "Deployment",
+          name: "nv-sms-skills-ts-outbound-delivery-worker",
+          namespace: "nv-sms",
+        },
+        false,
+      ),
+      true,
+    );
+    assert.equal(
+      isWorkerOwnedWorkload({
+        kind: "Deployment",
+        name: "frontend",
+        namespace: "default",
+      }),
+      false,
+    );
   });
 });

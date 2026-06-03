@@ -88,6 +88,8 @@ export const clusters = pgTable("clusters", {
     .default("concurrent"),
   /** When true, pod heal rules also apply to Job / CronJob / ScaledJob pods. */
   healJobPods: boolean("heal_job_pods").notNull().default(false),
+  /** When true, pod heal rules also apply to worker Deployment pods. */
+  healWorkerPods: boolean("heal_worker_pods").notNull().default(true),
 });
 
 export const healRecords = pgTable("heal_records", {

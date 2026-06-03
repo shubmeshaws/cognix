@@ -8,7 +8,9 @@ import type { AgentEventBus } from "../events/bus.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { kubeconfigToBase64 } from "../lib/kubeconfig.js";
 import { ClusterConnection } from "../k8s/connection.js";
-import { isJobOwnedWorkload } from "../k8s/workload.js";
+import {
+  scopedPodHealSkipReason,
+} from "../k8s/workload.js";
 import { PodReasoner } from "../llm/reasoner.js";
 import {
   defaultEnabledHealRules,
@@ -63,6 +65,7 @@ export class WatcherManager {
   >();
   private readonly concurrencyModes = new Map<string, "concurrent" | "sequential">();
   private readonly healJobPods = new Map<string, boolean>();
+  private readonly healWorkerPods = new Map<string, boolean>();
   private readonly reasoner: PodReasoner;
 
   constructor(private readonly deps: WatcherManagerDeps) {
@@ -144,6 +147,14 @@ export class WatcherManager {
     return this.healJobPods.get(clusterId) ?? false;
   }
 
+  setHealWorkerPods(clusterId: string, enabled: boolean): void {
+    this.healWorkerPods.set(clusterId, enabled);
+  }
+
+  isHealWorkerPodsEnabledForCluster(clusterId: string): boolean {
+    return this.healWorkerPods.get(clusterId) ?? true;
+  }
+
   getConcurrencyMode(clusterId: string): "concurrent" | "sequential" {
     return this.concurrencyModes.get(clusterId) ?? "concurrent";
   }
@@ -217,14 +228,23 @@ export class WatcherManager {
       podName,
       namespace,
     );
-    if (
-      isJobOwnedWorkload(workload) &&
-      !this.isHealJobPodsEnabledForCluster(clusterId)
-    ) {
+    const scope = {
+      healJobPods: this.isHealJobPodsEnabledForCluster(clusterId),
+      healWorkerPods: this.isHealWorkerPodsEnabledForCluster(clusterId),
+    };
+    const skipReason = scopedPodHealSkipReason(pod, workload, scope);
+    if (skipReason === "job") {
       return {
         ok: false,
         error:
           "Job pod healing is off — enable “Heal job pods” in Rules → Pods and click Save",
+      };
+    }
+    if (skipReason === "worker") {
+      return {
+        ok: false,
+        error:
+          "Worker deployment healing is off — enable “Heal worker deployments” in Rules → Pods and click Save",
       };
     }
 
@@ -259,6 +279,7 @@ export class WatcherManager {
         healRuleModes: clusters.healRuleModes,
         concurrencyMode: clusters.concurrencyMode,
         healJobPods: clusters.healJobPods,
+        healWorkerPods: clusters.healWorkerPods,
       })
       .from(clusters)
       .where(eq(clusters.id, clusterId))
@@ -274,6 +295,7 @@ export class WatcherManager {
     this.healRuleModes.set(clusterId, modes);
     this.concurrencyModes.set(clusterId, row.concurrencyMode ?? "concurrent");
     this.healJobPods.set(clusterId, row.healJobPods ?? false);
+    this.healWorkerPods.set(clusterId, row.healWorkerPods ?? true);
   }
 
   get activeClusterCount(): number {
@@ -368,6 +390,7 @@ export class WatcherManager {
     this.healRuleModes.set(clusterId, modes);
     this.concurrencyModes.set(clusterId, row.concurrencyMode ?? "concurrent");
     this.healJobPods.set(clusterId, row.healJobPods ?? false);
+    this.healWorkerPods.set(clusterId, row.healWorkerPods ?? true);
 
     const watcherDeps: PodWatcherDeps = {
       db: this.deps.db,
@@ -383,6 +406,8 @@ export class WatcherManager {
         this.isApprovalRequiredForCluster(clusterId, issue),
       isHealingPaused: () => this.healingPaused,
       isHealJobPodsEnabled: () => this.isHealJobPodsEnabledForCluster(clusterId),
+      isHealWorkerPodsEnabled: () =>
+        this.isHealWorkerPodsEnabledForCluster(clusterId),
       getConcurrencyMode: () => this.getConcurrencyMode(clusterId),
       refreshHealRules: () => this.refreshHealRulesFromDb(clusterId),
       maxMemoryLimit: this.deps.env.MAX_MEMORY_LIMIT,
@@ -419,6 +444,7 @@ export class WatcherManager {
     this.healRuleModes.delete(clusterId);
     this.concurrencyModes.delete(clusterId);
     this.healJobPods.delete(clusterId);
+    this.healWorkerPods.delete(clusterId);
     this.deps.log?.info({ clusterId }, "watcher manager stopped cluster");
   }
 

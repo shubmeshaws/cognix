@@ -12,6 +12,7 @@ import { useAgentToken } from "@/hooks/useAgentToken";
 import {
   ApiError,
   fetchAgentStatus,
+  fetchSetupHealth,
   fetchAlerts,
   fetchClusters,
   fetchHealRules,
@@ -145,6 +146,17 @@ export function useAgentStatus() {
     queryKey: ["agent-status"],
     queryFn: () => fetchAgentStatus(token!),
     enabled: Boolean(token),
+  });
+}
+
+export function useSetupHealth() {
+  const token = useAgentToken();
+
+  return useQuery({
+    queryKey: ["setup-health"],
+    queryFn: () => fetchSetupHealth(token!),
+    enabled: Boolean(token),
+    refetchInterval: REFETCH_INTERVAL_MS,
   });
 }
 

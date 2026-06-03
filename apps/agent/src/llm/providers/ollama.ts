@@ -1,3 +1,5 @@
+import { resolveOllamaModelForRequest } from "../ollama-models.js";
+
 export interface LlmCompletionResult {
   text: string;
   promptTokens?: number;
@@ -44,7 +46,17 @@ export async function callOllama(
     // Wait for the previous request to finish (succeed or fail)
     await currentQueueTail.catch(() => {});
 
-    console.log(`[callOllama] [START] baseUrl="${baseUrl}" model="${model}" timeoutMs=${timeoutMs}`);
+    const { model: resolvedModel, autoSelected } =
+      await resolveOllamaModelForRequest(baseUrl, model);
+    if (autoSelected) {
+      console.log(
+        `[callOllama] configured model "${model}" not installed; using "${resolvedModel}"`,
+      );
+    }
+
+    console.log(
+      `[callOllama] [START] baseUrl="${baseUrl}" model="${resolvedModel}" timeoutMs=${timeoutMs}`,
+    );
 
     const messages = [
       { role: "system", content: system },
@@ -56,7 +68,7 @@ export async function callOllama(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model,
+        model: resolvedModel,
         messages,
         stream: false,
       }),
@@ -73,7 +85,9 @@ export async function callOllama(
 
     const data = (await res.json()) as OllamaChatResponse;
     const elapsed = Math.round(performance.now() - startTime);
-    console.log(`[callOllama] [SUCCESS] model="${model}" latency=${elapsed}ms`);
+    console.log(
+      `[callOllama] [SUCCESS] model="${resolvedModel}" latency=${elapsed}ms`,
+    );
 
     const promptTokens = data.prompt_eval_count;
     const completionTokens = data.eval_count;

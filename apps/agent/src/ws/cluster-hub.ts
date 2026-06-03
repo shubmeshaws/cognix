@@ -62,6 +62,8 @@ export interface PodSummaryWs {
   ready: boolean;
   issueType: string | null;
   hasActiveHeal: boolean;
+  jobOwned: boolean;
+  workerOwned: boolean;
 }
 
 export interface TerminalLineWs {

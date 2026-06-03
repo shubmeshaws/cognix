@@ -4,6 +4,7 @@ import {
   detectIssue,
   getPodRestartCount,
 } from "./detectIssue.js";
+import { isJobOwnedPod, isWorkerOwnedPod } from "../k8s/workload.js";
 
 export interface PodSummary {
   name: string;
@@ -13,6 +14,8 @@ export interface PodSummary {
   ready: boolean;
   issueType: string | null;
   hasActiveHeal: boolean;
+  jobOwned: boolean;
+  workerOwned: boolean;
 }
 
 function podKey(namespace: string, name: string): string {
@@ -39,6 +42,8 @@ export function podToSummary(
     ready,
     issueType,
     hasActiveHeal: activeHealKeys.has(podKey(namespace, name)),
+    jobOwned: isJobOwnedPod(pod),
+    workerOwned: isWorkerOwnedPod(pod),
   };
 }
 

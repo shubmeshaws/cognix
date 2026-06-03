@@ -16,7 +16,7 @@ import {
   Terminal,
 } from "lucide-react";
 
-import { Topbar } from "@/components/dashboard/Topbar";
+
 import { useClusterStore } from "@/stores/cluster";
 import { usePods, usePodLogs } from "@/lib/query";
 import { triggerManualPodHeal, parseApiErrorMessage } from "@/lib/api";
@@ -189,9 +189,7 @@ export default function PodsPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <Topbar title="Pods" />
-
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="flex-1 p-5 md:p-6 space-y-6">
         
         {/* Toolbar & Filters Column */}

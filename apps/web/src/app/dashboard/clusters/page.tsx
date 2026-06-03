@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CloudUpload, Laptop, Trash2 } from "lucide-react";
 
 import { ConnectCluster } from "@/components/ConnectCluster";
-import { Topbar } from "@/components/dashboard/Topbar";
+
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAgentToken } from "@/hooks/useAgentToken";
@@ -67,9 +67,7 @@ export default function ClustersPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Topbar title="Clusters" />
-
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-1 flex-col p-6">
         {hasClusters && (
           <section className="mb-8">

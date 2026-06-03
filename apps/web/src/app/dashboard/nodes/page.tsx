@@ -19,7 +19,7 @@ import {
   Filter
 } from "lucide-react";
 
-import { Topbar } from "@/components/dashboard/Topbar";
+
 import { useClusterStore } from "@/stores/cluster";
 import { useNodes } from "@/lib/query";
 import type { NodeSummary, NodeCondition } from "@/types/api";
@@ -130,9 +130,7 @@ export default function NodesPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <Topbar title="Nodes" />
-
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="flex-1 p-5 md:p-6 space-y-6">
         {/* Header Action & Status Bar */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">

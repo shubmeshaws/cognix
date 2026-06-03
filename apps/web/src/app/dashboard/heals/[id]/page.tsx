@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
-import { Topbar } from "@/components/dashboard/Topbar";
+
 import { Terminal } from "@/components/Terminal";
 import { TerminalModal } from "@/components/TerminalModal";
 import { Button } from "@/components/ui/button";
@@ -26,9 +26,7 @@ export default function HealDetailPage() {
   const useLive = heal?.status === "pending";
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Topbar title="Heal detail" />
-
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="space-y-4 p-6">
         <Link
           href="/dashboard/heals"

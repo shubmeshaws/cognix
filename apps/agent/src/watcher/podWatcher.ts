@@ -7,7 +7,11 @@ import type { AgentEventBus } from "../events/bus.js";
 import { healNeedsApproval } from "../healer/heal-meta.js";
 import { buildOomMemorySnapshot } from "../healer/oom-snapshot.js";
 import type { ClusterConnection } from "../k8s/connection.js";
-import { isJobOwnedWorkload, type WorkloadRef } from "../k8s/workload.js";
+import {
+  scopedPodHealSkipReason,
+  shouldSkipScopedPodHeal,
+  type WorkloadRef,
+} from "../k8s/workload.js";
 import { fallbackDiagnosis } from "../llm/fallback-diagnosis.js";
 import { PodReasoner } from "../llm/reasoner.js";
 import type { PodDiagnosis } from "../llm/types.js";
@@ -44,6 +48,7 @@ export interface PodWatcherDeps {
   isApprovalRequired: (issue: IssueType) => boolean;
   isHealingPaused: () => boolean;
   isHealJobPodsEnabled: () => boolean;
+  isHealWorkerPodsEnabled: () => boolean;
   getConcurrencyMode: () => "concurrent" | "sequential";
   refreshHealRules?: () => Promise<void>;
   maxMemoryLimit: string;
@@ -59,6 +64,28 @@ export class PodWatcher {
 
   constructor(deps: PodWatcherDeps) {
     this.deps = deps;
+  }
+
+  private podHealScope() {
+    return {
+      healJobPods: this.deps.isHealJobPodsEnabled(),
+      healWorkerPods: this.deps.isHealWorkerPodsEnabled(),
+    };
+  }
+
+  private scopedHealSkipMessage(
+    pod: V1Pod,
+    workload: { kind: string; name: string } | null,
+    manual: boolean,
+    phase: "skipped" | "aborted",
+  ): string | null {
+    const reason = scopedPodHealSkipReason(pod, workload, this.podHealScope());
+    if (!reason) return null;
+    const label =
+      reason === "job"
+        ? "job pod healing disabled"
+        : "worker deployment healing disabled";
+    return manual ? `manual heal ${phase} — ${label}` : `heal ${phase} — ${label}`;
   }
 
   start(connection: ClusterConnection, clusterId: string): void {
@@ -267,10 +294,13 @@ export class PodWatcher {
       ? await this.connection.resolveWorkloadForPod(podName, namespace)
       : null;
 
-    if (
-      isJobOwnedWorkload(workload) &&
-      !this.deps.isHealJobPodsEnabled()
-    ) {
+    const skipMessage = this.scopedHealSkipMessage(
+      pod,
+      workload,
+      manual,
+      "skipped",
+    );
+    if (skipMessage) {
       this.deps.log?.info(
         {
           clusterId: this.clusterId,
@@ -281,9 +311,7 @@ export class PodWatcher {
           workloadName: workload?.name,
           manual,
         },
-        manual
-          ? "manual heal skipped — job pod healing disabled"
-          : "heal skipped — job pod healing disabled",
+        skipMessage,
       );
       return;
     }
@@ -509,6 +537,28 @@ export class PodWatcher {
     }
 
     await this.deps.refreshHealRules?.();
+
+    const abortMessage = this.scopedHealSkipMessage(
+      pod,
+      workload,
+      manual,
+      "aborted",
+    );
+    if (abortMessage) {
+      this.deps.log?.info(
+        {
+          clusterId: this.clusterId,
+          podName,
+          namespace,
+          issueType,
+          workloadKind: workload?.kind,
+          workloadName: workload?.name,
+          manual,
+        },
+        abortMessage,
+      );
+      return;
+    }
 
     const approvalRequired = this.deps.isApprovalRequired(issueType);
     const diagnosisForRecord = {

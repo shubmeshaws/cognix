@@ -565,12 +565,15 @@ Write a natural, friendly response confirming this action. Never say "checking n
           }
         } catch (llmErr) {
           app.log.warn({ err: llmErr }, "LLM completion failed, using fallback heuristic response");
-          const hint =
-            llmErr instanceof Error &&
-            (llmErr.message.includes("not configured") ||
-              llmErr.message.includes("API key"))
-              ? " Add your API key in Settings, click Test via agent, then ensure OpenAI is in your provider chain."
-              : "";
+          const errMsg =
+            llmErr instanceof Error ? llmErr.message.toLowerCase() : "";
+          const hint = errMsg.includes("not configured") || errMsg.includes("api key")
+            ? " Add your API key in Settings, click Test via agent, then ensure that provider is in your chain."
+            : errMsg.includes("not found")
+              ? ` Your Ollama model “${getEffectiveOllamaModel()}” is not installed — run \`ollama list\`, pick an installed model in Settings, then **Apply to agent**.`
+              : errMsg.includes("timeout")
+                ? " Ollama took too long (large cluster + local model). Try again, use a smaller/faster model, or add OpenAI as a fallback in Settings."
+                : "";
 
           if (ACTION_INTENTS.has(parsedJson.intent)) {
             parsedJson.response = parseHeuristicIntent(

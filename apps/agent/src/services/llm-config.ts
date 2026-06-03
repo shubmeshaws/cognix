@@ -88,6 +88,22 @@ export async function applyLlmConfigPatch(
   if (patch.llmChain !== undefined) {
     normalized.llmChain = normalizeLlmChain(patch.llmChain);
   }
+
+  const ollamaUrl = normalized.ollamaUrl?.trim() || getEffectiveOllamaUrl(env);
+  const ollamaModel =
+    normalized.ollamaModel?.trim() || getEffectiveOllamaModel();
+  if (ollamaUrl && ollamaModel) {
+    try {
+      const tags = await fetchOllamaTags(ollamaUrl);
+      const { model, autoSelected } = resolveOllamaModel(tags.models, ollamaModel);
+      if (autoSelected) {
+        normalized.ollamaModel = model;
+      }
+    } catch {
+      // Keep user-provided model if Ollama is temporarily unreachable.
+    }
+  }
+
   setLlmRuntime(normalized);
   await saveLlmConfigToDisk();
   return getLlmConfigResponse(env);
@@ -124,12 +140,17 @@ export async function testOllamaConnection(
       };
     }
 
-    const autoNote = autoSelected
-      ? ` (auto-selected “${resolved}” — update Settings to use it by default)`
-      : "";
+    if (autoSelected) {
+      return {
+        ok: true,
+        message:
+          `Connected to Ollama — using “${resolved}” because “${preferred}” is not installed. ` +
+          `Click **Apply to agent** in Settings to save “${resolved}” as your default model.`,
+      };
+    }
     return {
       ok: true,
-      message: `Connected to Ollama — model “${resolved}” is available${autoNote}`,
+      message: `Connected to Ollama — model “${resolved}” is available`,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Connection failed";

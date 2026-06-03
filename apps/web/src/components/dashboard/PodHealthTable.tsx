@@ -209,6 +209,8 @@ export function PodHealthTable({
   const hasMore = rows.length > VISIBLE_POD_ROWS;
   const recentHealCount = heals.filter(isRecentlyHealed).length;
   const rules = healRulesQuery.data?.rules;
+  const healJobPods = healRulesQuery.data?.healJobPods ?? false;
+  const healWorkerPods = healRulesQuery.data?.healWorkerPods ?? true;
   const showHealColumn = manualHealActive;
   const colCount = showHealColumn ? 6 : 5;
 
@@ -299,6 +301,10 @@ export function PodHealthTable({
                   showHealed || linkedHeal?.status === "healed";
                 const key = podKey(pod.namespace, pod.name);
                 const ruleOn = isRuleEnabledForIssue(rules, issueLabel);
+                const jobPodBlocked = pod.jobOwned === true && !healJobPods;
+                const workerPodBlocked =
+                  pod.workerOwned === true && !healWorkerPods;
+                const scopePodBlocked = jobPodBlocked || workerPodBlocked;
                 const canManualHeal =
                   manualHealActive &&
                   ruleOn &&
@@ -307,7 +313,8 @@ export function PodHealthTable({
                   !alreadyHealed &&
                   linkedHeal?.status !== "pending" &&
                   !pod.hasActiveHeal &&
-                  !healingKeys.has(key);
+                  !healingKeys.has(key) &&
+                  !scopePodBlocked;
                 const isHealing = healingKeys.has(key);
                 const healError = healErrors[key];
 
@@ -362,6 +369,17 @@ export function PodHealthTable({
                         {alreadyHealed ? (
                           <span className="text-2xs font-medium text-emerald-700 dark:text-emerald-400">
                             healed
+                          </span>
+                        ) : scopePodBlocked ? (
+                          <span
+                            className="text-2xs text-muted-foreground"
+                            title={
+                              jobPodBlocked
+                                ? "Enable “Heal job pods” in Rules → Pods"
+                                : "Enable “Heal worker deployments” in Rules → Pods"
+                            }
+                          >
+                            {jobPodBlocked ? "job heal off" : "worker heal off"}
                           </span>
                         ) : ruleOn && issueLabel && pod.issueType ? (
                           <div className="flex flex-col gap-0.5">

@@ -309,6 +309,7 @@ export const clustersPlugin: FastifyPluginAsync<{
           modes: z.record(z.enum(["auto", "approval"])).optional(),
           concurrencyMode: z.enum(["concurrent", "sequential"]).optional(),
           healJobPods: z.boolean().optional(),
+          healWorkerPods: z.boolean().optional(),
         })
         .safeParse(request.body);
       if (!params.success || !body.success) {
@@ -323,6 +324,7 @@ export const clustersPlugin: FastifyPluginAsync<{
           body.data.modes,
           body.data.concurrencyMode,
           body.data.healJobPods,
+          body.data.healWorkerPods,
         );
       } catch (err) {
         if (err instanceof ClusterNotFoundError) {

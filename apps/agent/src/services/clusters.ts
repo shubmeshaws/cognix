@@ -276,6 +276,7 @@ export class ClusterRegistryService {
       approvalRules: approvalHealRulesFromModes(modes),
       concurrencyMode: row.concurrencyMode,
       healJobPods: row.healJobPods ?? false,
+      healWorkerPods: row.healWorkerPods ?? true,
     };
   }
 
@@ -286,6 +287,7 @@ export class ClusterRegistryService {
     modesInput?: Record<string, string>,
     concurrencyModeInput?: "concurrent" | "sequential",
     healJobPodsInput?: boolean,
+    healWorkerPodsInput?: boolean,
   ) {
     const parsed = validateHealRuleUpdate(ruleIds);
     if (!parsed.ok) {
@@ -303,6 +305,9 @@ export class ClusterRegistryService {
         healRuleModes: modes,
         ...(concurrencyModeInput && { concurrencyMode: concurrencyModeInput }),
         ...(healJobPodsInput !== undefined && { healJobPods: healJobPodsInput }),
+        ...(healWorkerPodsInput !== undefined && {
+          healWorkerPods: healWorkerPodsInput,
+        }),
       })
       .where(and(eq(clusters.id, clusterId), eq(clusters.ownerId, ownerId)))
       .returning();
@@ -319,6 +324,9 @@ export class ClusterRegistryService {
     if (healJobPodsInput !== undefined) {
       this.watcher.setHealJobPods(clusterId, healJobPodsInput);
     }
+    if (healWorkerPodsInput !== undefined) {
+      this.watcher.setHealWorkerPods(clusterId, healWorkerPodsInput);
+    }
     void this.watcher.scanForHealablePods(clusterId).catch(() => {
       // scan is best-effort after rules change
     });
@@ -332,6 +340,7 @@ export class ClusterRegistryService {
       approvalRules: approvalHealRulesFromModes(modes),
       concurrencyMode: row.concurrencyMode,
       healJobPods: row.healJobPods ?? false,
+      healWorkerPods: row.healWorkerPods ?? true,
     };
   }
 

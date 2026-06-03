@@ -7,6 +7,9 @@ import { healNeedsApproval } from "../healer/heal-meta.js";
 import { memoryApprovalFromBeforeState } from "../healer/oom-snapshot.js";
 import { mapHealRecord } from "../healer/orchestrator.js";
 import { TerminalSession } from "../healer/terminal.js";
+import {
+  scopedPodHealSkipReason,
+} from "../k8s/workload.js";
 import type { IssueType } from "../watcher/detectIssue.js";
 import { notifyHealCompleted } from "./heal-notifications.js";
 
@@ -68,6 +71,46 @@ export async function runHealPipeline(
   if (!connection) {
     log?.warn({ clusterId, healRecordId }, "no cluster connection for heal pipeline");
     return;
+  }
+
+  if (!payload.manual) {
+    const workload = await connection.resolveWorkloadForPod(podName, namespace);
+    const scope = {
+      healJobPods: deps.watcher.isHealJobPodsEnabledForCluster(clusterId),
+      healWorkerPods: deps.watcher.isHealWorkerPodsEnabledForCluster(clusterId),
+    };
+    const skipReason = scopedPodHealSkipReason(payload.pod, workload, scope);
+    if (skipReason) {
+      const reason =
+        skipReason === "job"
+          ? "job pod healing disabled"
+          : "worker deployment healing disabled";
+      log?.info(
+        { clusterId, healRecordId, podName, namespace, skipReason },
+        `heal pipeline skipped — ${reason}`,
+      );
+      await deps.db
+        .update(healRecords)
+        .set({
+          status: "skipped",
+          durationMs: 0,
+          afterState: { reason },
+        })
+        .where(eq(healRecords.id, healRecordId));
+
+      deps.clusterHub.broadcastToCluster(clusterId, {
+        type: "heal:complete",
+        healId: healRecordId,
+        status: "skipped",
+        durationMs: 0,
+        podName,
+        namespace,
+        issue: issueType,
+        action: diagnosis.action,
+        severity: diagnosis.severity,
+      });
+      return;
+    }
   }
 
   const [row] = await deps.db

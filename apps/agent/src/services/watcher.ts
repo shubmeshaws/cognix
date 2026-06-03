@@ -139,4 +139,16 @@ export class WatcherService {
   setHealJobPods(clusterId: string, enabled: boolean): void {
     this.manager.setHealJobPods(clusterId, enabled);
   }
+
+  isHealJobPodsEnabledForCluster(clusterId: string): boolean {
+    return this.manager.isHealJobPodsEnabledForCluster(clusterId);
+  }
+
+  setHealWorkerPods(clusterId: string, enabled: boolean): void {
+    this.manager.setHealWorkerPods(clusterId, enabled);
+  }
+
+  isHealWorkerPodsEnabledForCluster(clusterId: string): boolean {
+    return this.manager.isHealWorkerPodsEnabledForCluster(clusterId);
+  }
 }

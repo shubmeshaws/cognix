@@ -15,6 +15,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  ListChecks,
 } from "lucide-react";
 
 import { getActiveLlmDisplay } from "@/lib/llm-display";
@@ -40,6 +41,7 @@ const NAV = [
   { href: "/dashboard/clusters", label: "Clusters", icon: Layers },
   { href: "/dashboard/rules", label: "Rules", icon: ShieldCheck },
   { href: "/dashboard/meshy", label: "MeshyAI", icon: Sparkles },
+  { href: "/dashboard/setup", label: "Setup", icon: ListChecks },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
@@ -88,7 +90,9 @@ export function Sidebar() {
             (href === "/dashboard/settings" &&
               pathname.startsWith("/dashboard/settings")) ||
             (href === "/dashboard/rules" &&
-              pathname.startsWith("/dashboard/rules"));
+              pathname.startsWith("/dashboard/rules")) ||
+            (href === "/dashboard/setup" &&
+              pathname.startsWith("/dashboard/setup"));
           const count = badgeKey ? badges[badgeKey] : 0;
           return (
             <Link

@@ -15,12 +15,13 @@ import {
   ExternalLink,
   X,
   Square,
+  Trash2,
 } from "lucide-react";
 import { AnimatedVoiceAssistantIcon } from "@/components/meshy/AnimatedVoiceAssistantIcon";
 import { MeshyMessageContent } from "@/components/meshy/MeshyMessageContent";
 import { useClusterStore } from "@/stores/cluster";
 import { useAgentToken } from "@/hooks/useAgentToken";
-import { Topbar } from "@/components/dashboard/Topbar";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { cn } from "@/lib/utils";
 import { approveHeal, fetchLlmConfig } from "@/lib/api";
 import { speakMeshyText } from "@/lib/meshy-tts";
@@ -37,6 +38,7 @@ import { VoiceActivityMonitor } from "@/lib/voice-vad";
 import { useMeshy } from "@/stores/meshy";
 import { useSettingsStore } from "@/stores/settings";
 import {
+  clearMeshyChatMessages,
   loadMeshyChatMessages,
   saveMeshyChatMessages,
   type StoredMeshyMessage,
@@ -106,6 +108,7 @@ export function MeshyChat() {
 
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [actionDone, setActionDone] = useState<Record<string, boolean>>({});
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Voice Interaction State
   const [showVoiceModal, setShowVoiceModal] = useState(false);
@@ -122,6 +125,7 @@ export function MeshyChat() {
   const recognitionRef = useRef<any>(null);
   const voiceAutoSubmitRef = useRef<(transcript: string) => void>(() => {});
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
   const speakGenerationRef = useRef(0);
   const pendingTranscriptRef = useRef("");
   const voiceSubmittingRef = useRef(false);
@@ -254,6 +258,8 @@ export function MeshyChat() {
 
   const stopSpeaking = () => {
     speakGenerationRef.current += 1;
+    ttsAbortRef.current?.abort();
+    ttsAbortRef.current = null;
     if (typeof window !== "undefined") {
       window.speechSynthesis?.cancel();
     }
@@ -546,6 +552,8 @@ export function MeshyChat() {
     if (turnId !== voiceTurnGenerationRef.current) return;
 
     const generation = speakGenerationRef.current;
+    const ttsAbort = new AbortController();
+    ttsAbortRef.current = ttsAbort;
 
     await speakMeshyText(spoken, {
       useHuggingFace,
@@ -553,6 +561,7 @@ export function MeshyChat() {
       gender: voiceGender,
       language: voiceLanguage,
       rate: 0.92,
+      signal: ttsAbort.signal,
       onAudio: (audio) => {
         if (
           generation === speakGenerationRef.current &&
@@ -562,6 +571,10 @@ export function MeshyChat() {
         }
       },
     });
+
+    if (ttsAbortRef.current === ttsAbort) {
+      ttsAbortRef.current = null;
+    }
   };
 
   /** Speak one or more lines; VAD stays paused until done or interrupted. */
@@ -870,6 +883,8 @@ export function MeshyChat() {
   /** Stop Meshy speech or in-flight request and listen for the next question. */
   const handleVoiceStop = () => {
     beginVoiceTurn();
+    voiceSubmittingRef.current = false;
+    setVoiceProcessing(false);
     resumeListening();
   };
 
@@ -884,7 +899,9 @@ export function MeshyChat() {
   };
 
   const meshyVoiceBusy =
-    voicePhase === "processing" || voicePhase === "responding";
+    voiceProcessing ||
+    voicePhase === "processing" ||
+    voicePhase === "responding";
 
   const sendMessage = async (textToSend: string) => {
     if (!textToSend.trim() || !activeClusterId || !token || loading) return;
@@ -997,6 +1014,24 @@ export function MeshyChat() {
     sendMessage(text);
   };
 
+  const canClearChat = useMemo(
+    () => messages.some((message) => message.id !== "welcome"),
+    [messages],
+  );
+
+  const handleClearChat = () => {
+    if (!canClearChat || loading) return;
+    setShowClearConfirm(true);
+  };
+
+  const confirmClearChat = () => {
+    if (activeClusterId) {
+      clearMeshyChatMessages(activeClusterId);
+    }
+    setMessages([MESHY_WELCOME_MESSAGE]);
+    setShowClearConfirm(false);
+  };
+
   const SUGGESTIONS = [
     { text: "🔍 Scan cluster for issues", label: "Scan Cluster" },
     { text: "📋 Show all cluster pods", label: "List Pods" },
@@ -1004,10 +1039,8 @@ export function MeshyChat() {
   ];
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Topbar title="Meshy" />
-
-      <div className="flex flex-1 flex-col overflow-hidden p-6">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
         {!activeClusterId ? (
           <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border p-12 text-center">
             <Sparkles className="h-12 w-12 text-muted-foreground animate-pulse" />
@@ -1017,15 +1050,29 @@ export function MeshyChat() {
             </p>
           </div>
         ) : (
-          <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-border/80 bg-card shadow-lg">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/80 bg-card shadow-lg">
             {/* Chat Header */}
-            <div className="flex items-center justify-between border-b border-border/80 bg-muted/40 px-6 py-4">
+            <div className="shrink-0 flex items-center justify-between border-b border-border/80 bg-muted/40 px-6 py-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-600/10 text-violet-600 dark:bg-violet-400/10 dark:text-violet-400">
                   <Sparkles className="h-5 w-5 animate-pulse" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-bold leading-tight">Meshy</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold leading-tight">Meshy</h2>
+                    {canClearChat && (
+                      <button
+                        type="button"
+                        onClick={handleClearChat}
+                        disabled={loading}
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-2xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                        title="Clear chat history"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Clear chat
+                      </button>
+                    )}
+                  </div>
                   <p className="text-2xs text-emerald-500 font-medium flex items-center gap-1 mt-0.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
                     MeshyAI assistant connected
@@ -1070,7 +1117,7 @@ export function MeshyChat() {
             </div>
 
             {/* Message Area */}
-            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 scrollbar-thin scrollbar-thumb-muted">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 space-y-6 scrollbar-thin scrollbar-thumb-muted">
               {messages.map((m) => {
                 const isAssistant = m.role === "assistant";
                 return (
@@ -1154,7 +1201,7 @@ export function MeshyChat() {
             </div>
 
             {/* Chat Footer */}
-            <div className="border-t border-border/80 bg-muted/20 px-6 py-4 space-y-3">
+            <div className="shrink-0 border-t border-border/80 bg-muted/20 px-6 py-4 space-y-3">
               {/* Suggestion Chips */}
               <div className="flex flex-wrap gap-2">
                 {SUGGESTIONS.map((s, idx) => (
@@ -1199,32 +1246,51 @@ export function MeshyChat() {
         )}
       </div>
 
+      <ConfirmDialog
+        open={showClearConfirm}
+        title="Clear chat?"
+        description="Message history for this cluster will be removed. This cannot be undone."
+        confirmLabel="Clear chat"
+        variant="destructive"
+        onCancel={() => setShowClearConfirm(false)}
+        onConfirm={confirmClearChat}
+      />
+
       {/* Fullscreen Meshy Voice */}
       {showVoiceModal && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-neutral-900 via-neutral-950 to-black text-white animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-50 isolate flex flex-col bg-gradient-to-b from-background via-violet-50 to-muted text-foreground dark:from-neutral-950 dark:via-neutral-900 dark:to-black animate-in fade-in duration-300">
           {/* Top Gradient Bar */}
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-400 opacity-60" />
+          <div className="pointer-events-none absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-400 opacity-60" />
 
           {/* Close — Top Left */}
           <button
             type="button"
             onClick={closeVoiceAssistant}
-            className="absolute top-5 left-5 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-600/40 hover:text-red-300 hover:scale-110 transition-all duration-200 shadow-lg"
+            className="absolute top-5 left-5 z-[100] flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-red-300/50 bg-red-50 text-red-600 shadow-lg transition-all duration-200 hover:scale-110 hover:bg-red-100 dark:border-red-500/30 dark:bg-red-600/20 dark:text-red-400 dark:hover:bg-red-600/40 dark:hover:text-red-300"
             title="Close Voice Assistant"
           >
             <X className="h-5 w-5" />
           </button>
 
           {/* Header — mic + status */}
-          <div className="shrink-0 flex flex-col items-center px-6 pt-14 pb-4">
-            <div className="relative flex items-center justify-center h-36 w-36 mb-3">
-              <div className="absolute inset-0 rounded-full border border-violet-500/10 animate-ping" style={{ animationDuration: "3s" }} />
-              <div className="absolute inset-4 rounded-full border border-fuchsia-500/20 animate-ping" style={{ animationDuration: "2s" }} />
-              <div className="absolute inset-8 rounded-full border border-cyan-400/15 animate-ping" style={{ animationDuration: "2.5s" }} />
+          <div className="relative z-10 shrink-0 flex flex-col items-center px-6 pt-14 pb-4 pointer-events-none">
+            <div className="relative flex h-36 w-36 items-center justify-center mb-3 pointer-events-none">
+              <div
+                className="absolute inset-0 rounded-full border border-violet-500/10 animate-ping pointer-events-none"
+                style={{ animationDuration: "3s" }}
+              />
+              <div
+                className="absolute inset-4 rounded-full border border-fuchsia-500/20 animate-ping pointer-events-none"
+                style={{ animationDuration: "2s" }}
+              />
+              <div
+                className="absolute inset-8 rounded-full border border-cyan-400/15 animate-ping pointer-events-none"
+                style={{ animationDuration: "2.5s" }}
+              />
 
               <div
                 className={cn(
-                  "absolute h-24 w-24 rounded-full bg-gradient-to-tr from-violet-600 via-fuchsia-500 to-cyan-400 blur-xl transition-all duration-500",
+                  "absolute h-24 w-24 rounded-full bg-gradient-to-tr from-violet-600 via-fuchsia-500 to-cyan-400 blur-xl transition-all duration-500 pointer-events-none",
                   voicePhase === "speaking"
                     ? "scale-125 opacity-55 animate-pulse"
                     : voicePhase === "processing"
@@ -1239,12 +1305,12 @@ export function MeshyChat() {
                 type="button"
                 onClick={handleVoiceMicPress}
                 className={cn(
-                  "relative z-10 flex h-20 w-20 items-center justify-center rounded-full border shadow-2xl transition-all duration-300 disabled:opacity-50",
+                  "pointer-events-auto relative z-10 flex h-20 w-20 items-center justify-center rounded-full border shadow-2xl transition-all duration-300 disabled:opacity-50",
                   meshyVoiceBusy
-                    ? "border-red-500/40 bg-red-600/20 text-red-400 scale-110 shadow-[0_0_30px_rgba(239,68,68,0.35)]"
+                    ? "border-red-500/40 bg-red-600/20 text-red-500 scale-110 shadow-[0_0_30px_rgba(239,68,68,0.35)] dark:text-red-400"
                     : voicePhase === "speaking"
-                      ? "border-red-500/40 bg-red-600/20 text-red-400 scale-110 shadow-[0_0_30px_rgba(239,68,68,0.35)]"
-                      : "border-violet-500/40 bg-violet-600/10 text-violet-400 hover:bg-violet-600/20 hover:scale-105",
+                      ? "border-red-500/40 bg-red-600/20 text-red-500 scale-110 shadow-[0_0_30px_rgba(239,68,68,0.35)] dark:text-red-400"
+                      : "border-violet-500/40 bg-violet-600/10 text-violet-600 hover:bg-violet-600/20 hover:scale-105 dark:text-violet-400",
                 )}
                 title={
                   meshyVoiceBusy
@@ -1270,24 +1336,24 @@ export function MeshyChat() {
               <button
                 type="button"
                 onClick={handleVoiceStop}
-                className="mb-3 inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-600/15 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-600/25 transition-colors"
+                className="relative z-30 mb-3 inline-flex cursor-pointer items-center gap-2 rounded-full border border-red-300/50 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 pointer-events-auto dark:border-red-500/40 dark:bg-red-600/15 dark:text-red-300 dark:hover:bg-red-600/25"
               >
                 <Square className="h-4 w-4 fill-current" />
                 Stop
               </button>
             )}
 
-            <div className="mb-3 flex h-1.5 w-48 overflow-hidden rounded-full bg-white/10">
+            <div className="mb-3 flex h-1.5 w-48 overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all duration-75"
                 style={{ width: `${Math.round(micLevel * 100)}%` }}
               />
             </div>
 
-            <h3 className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 mb-1">
+            <h3 className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-violet-600 via-fuchsia-600 to-cyan-600 dark:from-violet-400 dark:via-fuchsia-400 dark:to-cyan-400 mb-1">
               Meshy Voice
             </h3>
-            <p className="text-sm text-neutral-400 leading-relaxed text-center max-w-lg">
+            <p className="text-sm text-muted-foreground leading-relaxed text-center max-w-lg">
               {voicePhase === "monitoring" &&
                 "Speak clearly — words appear left to right as you talk. I send after you pause for 3 seconds."}
               {voicePhase === "speaking" &&
@@ -1306,31 +1372,31 @@ export function MeshyChat() {
                 <div className="w-full space-y-3">
                   {voiceTurns.map((turn, index) => (
                     <div key={`voice-turn-${index}`} className="space-y-2">
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
+                      <div className="rounded-2xl border border-border bg-card p-3 shadow-sm">
                         <div className="flex items-center gap-2 mb-1">
                           <AnimatedVoiceAssistantIcon size={14} active listening />
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
                             You
                           </span>
                         </div>
-                        <p className="text-sm text-white/90">&ldquo;{turn.user}&rdquo;</p>
+                        <p className="text-sm text-foreground">&ldquo;{turn.user}&rdquo;</p>
                         {turn.userNote && (
-                          <p className="mt-1 text-[11px] text-neutral-500">{turn.userNote}</p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">{turn.userNote}</p>
                         )}
                       </div>
-                      <div className="bg-gradient-to-br from-violet-600/5 via-transparent to-cyan-500/5 border border-white/10 rounded-2xl p-3">
+                      <div className="rounded-2xl border border-border bg-card p-3 shadow-sm dark:bg-gradient-to-br dark:from-violet-600/10 dark:via-transparent dark:to-cyan-500/10">
                         <div className="flex items-center gap-2 mb-1">
                           <div className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-600 text-white">
                             <Sparkles className="h-3 w-3" />
                           </div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
                             Meshy
                           </span>
                         </div>
                         <MeshyMessageContent
                           content={turn.assistant}
                           variant="assistant"
-                          className="text-sm text-white/90 [&_strong]:text-violet-200 [&_code]:text-emerald-200"
+                          className="text-sm text-foreground [&_strong]:text-violet-700 dark:[&_strong]:text-violet-200 [&_code]:text-emerald-700 dark:[&_code]:text-emerald-200"
                         />
                         {turn.uiCard && (
                           <div className="mt-3 transition-all duration-300 animate-in fade-in slide-in-from-bottom-3">
@@ -1377,23 +1443,23 @@ export function MeshyChat() {
               )}
 
               {(voiceTranscriptFinal || voiceTranscriptInterim) && liveVoiceDisplay && (
-                <div className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="w-full rounded-2xl border border-border bg-card p-4 shadow-sm transition-all animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className="flex items-center gap-2 mb-1.5">
                     <AnimatedVoiceAssistantIcon size={16} active listening />
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
                       Your Request
                     </span>
                   </div>
-                  <p className="text-sm font-medium text-white/90 leading-relaxed">
+                  <p className="text-sm font-medium text-foreground leading-relaxed">
                     &ldquo;{liveVoiceDisplay.normalized}&rdquo;
                   </p>
                   {liveVoiceDisplay.raw !== liveVoiceDisplay.normalized && (
-                    <p className="mt-1.5 text-[11px] text-neutral-500">
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
                       Heard: &ldquo;{liveVoiceDisplay.raw}&rdquo;
                     </p>
                   )}
                   {liveVoiceDisplay.corrections.length > 0 && (
-                    <p className="mt-1 text-[11px] text-cyan-300/80">
+                    <p className="mt-1 text-[11px] text-cyan-700 dark:text-cyan-300/80">
                       Interpreted: {liveVoiceDisplay.corrections.join(", ")}
                     </p>
                   )}
@@ -1407,24 +1473,24 @@ export function MeshyChat() {
                     <div className="h-2.5 w-2.5 rounded-full bg-fuchsia-500 animate-bounce" style={{ animationDelay: "150ms" }} />
                     <div className="h-2.5 w-2.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: "300ms" }} />
                   </div>
-                  <span className="text-sm text-neutral-400 font-medium">Meshy is thinking...</span>
+                  <span className="text-sm text-muted-foreground font-medium">Meshy is thinking...</span>
                 </div>
               )}
 
               {voiceResponse && voiceTurns.length === 0 && !voiceProcessing && (
-                <div className="w-full bg-gradient-to-br from-violet-600/5 via-transparent to-cyan-500/5 border border-white/10 rounded-2xl p-5 transition-all animate-in fade-in slide-in-from-bottom-3 duration-500">
+                <div className="w-full rounded-2xl border border-border bg-card p-5 shadow-sm transition-all animate-in fade-in slide-in-from-bottom-3 duration-500 dark:bg-gradient-to-br dark:from-violet-600/10 dark:via-transparent dark:to-cyan-500/10">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-white">
                       <Sparkles className="h-3.5 w-3.5" />
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
                       Meshy Response
                     </span>
                   </div>
                   <MeshyMessageContent
                     content={voiceResponse}
                     variant="assistant"
-                    className="text-white/90 [&_strong]:text-violet-200 [&_code]:text-emerald-200"
+                    className="text-foreground [&_strong]:text-violet-700 dark:[&_strong]:text-violet-200 [&_code]:text-emerald-700 dark:[&_code]:text-emerald-200"
                   />
                 </div>
               )}
@@ -1434,17 +1500,9 @@ export function MeshyChat() {
           </div>
 
           {/* Footer */}
-          <div className="shrink-0 px-6 py-4 text-center border-t border-white/5">
-            <p className="text-[11px] text-neutral-500">
-              Press <span className="text-red-400 font-semibold">✕</span> to close · Voice icon by{" "}
-              <a
-                href="https://icons8.com/icon/Kf8TpsrQqLln/voice-assistant"
-                target="_blank"
-                rel="noreferrer"
-                className="underline hover:text-violet-400"
-              >
-                Icons8
-              </a>
+          <div className="shrink-0 px-6 py-4 text-center border-t border-border">
+            <p className="text-[11px] text-muted-foreground">
+              Press <span className="text-red-600 font-semibold dark:text-red-400">✕</span> to close
             </p>
           </div>
         </div>

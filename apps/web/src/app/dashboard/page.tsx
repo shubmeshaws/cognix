@@ -6,7 +6,6 @@ import { AgentTerminal } from "@/components/dashboard/AgentTerminal";
 import { HealEventLog } from "@/components/dashboard/HealEventLog";
 import { MetricCards } from "@/components/dashboard/MetricCards";
 import { PodHealthTable } from "@/components/dashboard/PodHealthTable";
-import { Topbar } from "@/components/dashboard/Topbar";
 import {
   useAgentStatus,
   useAlerts,
@@ -33,9 +32,7 @@ export default function DashboardPage() {
     !podsQuery.isPlaceholderData;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Topbar title="Overview" />
-
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 space-y-5 p-5">
         {!activeClusterId && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

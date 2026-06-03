@@ -131,15 +131,23 @@ export async function waitForSpeechVoices(
 
 export async function speakWithBrowserTts(
   text: string,
-  options?: { rate?: number; gender?: MeshyVoiceGender; language?: MeshyVoiceLanguage },
+  options?: {
+    rate?: number;
+    gender?: MeshyVoiceGender;
+    language?: MeshyVoiceLanguage;
+    signal?: AbortSignal;
+  },
 ): Promise<void> {
-  if (typeof window === "undefined" || !text.trim()) return;
+  if (typeof window === "undefined" || !text.trim() || options?.signal?.aborted) {
+    return;
+  }
 
   const synth = window.speechSynthesis;
   if (!synth) return;
 
   synth.cancel();
   const voices = await waitForSpeechVoices(synth);
+  if (options?.signal?.aborted) return;
   const language = options?.language ?? loadMeshyVoiceLanguage();
   const voice = pickMeshyVoice(
     voices,
@@ -153,8 +161,17 @@ export async function speakWithBrowserTts(
     if (voice) utterance.voice = voice;
     utterance.rate = options?.rate ?? 0.92;
     utterance.pitch = 1;
-    utterance.onend = () => resolve();
-    utterance.onerror = () => resolve();
+    const finish = () => resolve();
+    utterance.onend = finish;
+    utterance.onerror = finish;
+    options?.signal?.addEventListener("abort", () => {
+      synth.cancel();
+      finish();
+    }, { once: true });
+    if (options?.signal?.aborted) {
+      finish();
+      return;
+    }
     synth.speak(utterance);
   });
 }
@@ -181,16 +198,23 @@ export async function speakWithHuggingFace(
   onAudio?: (audio: HTMLAudioElement) => void,
   voiceGender: MeshyVoiceGender = loadMeshyVoiceGender(),
   language: MeshyVoiceLanguage = loadMeshyVoiceLanguage(),
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  if (signal?.aborted) return false;
+
   try {
     const response = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, token, voiceGender, lang: language }),
+      signal,
     });
     if (!response.ok) return false;
+    if (signal?.aborted) return false;
 
     const blob = await response.blob();
+    if (signal?.aborted) return false;
+
     const audioUrl = URL.createObjectURL(blob);
     const audio = new Audio(audioUrl);
     onAudio?.(audio);
@@ -200,6 +224,11 @@ export async function speakWithHuggingFace(
         URL.revokeObjectURL(audioUrl);
         resolve();
       };
+      const onAbort = () => {
+        audio.pause();
+        done();
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
       audio.onended = done;
       audio.onerror = done;
       audio.onpause = () => {
@@ -207,8 +236,10 @@ export async function speakWithHuggingFace(
       };
       void audio.play().catch(done);
     });
-    return true;
-  } catch {
+    return !signal?.aborted;
+  } catch (err) {
+    if (signal?.aborted) return false;
+    if (err instanceof DOMException && err.name === "AbortError") return false;
     return false;
   }
 }
@@ -223,6 +254,7 @@ export async function speakMeshyText(
     language?: MeshyVoiceLanguage;
     rate?: number;
     onAudio?: (audio: HTMLAudioElement) => void;
+    signal?: AbortSignal;
   },
 ): Promise<void> {
   const language = opts.language ?? loadMeshyVoiceLanguage();
@@ -235,13 +267,17 @@ export async function speakMeshyText(
       opts.onAudio,
       opts.gender ?? loadMeshyVoiceGender(),
       language,
+      opts.signal,
     );
     if (ok) return;
   }
+
+  if (opts.signal?.aborted) return;
 
   await speakWithBrowserTts(text, {
     rate: opts.rate,
     gender: opts.gender,
     language,
+    signal: opts.signal,
   });
 }

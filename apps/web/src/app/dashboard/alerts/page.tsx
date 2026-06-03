@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { Topbar } from "@/components/dashboard/Topbar";
+
 import { useAlerts, useHeals } from "@/lib/query";
 import { useClusterStore } from "@/stores/cluster";
 import { cn } from "@/lib/utils";
@@ -183,9 +183,7 @@ export default function AlertsPage() {
   );
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Topbar title="Alerts" />
-
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 space-y-6 p-6">
         {/* Summary cards */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

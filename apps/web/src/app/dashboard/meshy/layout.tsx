@@ -24,8 +24,8 @@ export default function MeshyLayout({
   const pathname = usePathname();
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <div className="border-b bg-card/80 px-5 pt-2">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="shrink-0 border-b bg-card/80 px-5 pt-2">
         <div className="mb-2">
           <p className="text-2xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
             MeshyAI
@@ -54,7 +54,7 @@ export default function MeshyLayout({
           })}
         </nav>
       </div>
-      {children}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
     </div>
   );
 }

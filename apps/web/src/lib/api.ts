@@ -9,6 +9,7 @@ import type {
   LlmConfigResponse,
   LlmConnectionTestRequest,
   LlmConnectionTestResponse,
+  SetupHealthResponse,
   TeamsConfigPatch,
   TeamsConfigResponse,
   TeamsConnectionTestRequest,
@@ -151,6 +152,10 @@ export async function fetchAgentStatus(token: string): Promise<AgentStatus> {
   return apiFetch<AgentStatus>("/api/agent/status", token);
 }
 
+export async function fetchSetupHealth(token: string): Promise<SetupHealthResponse> {
+  return apiFetch<SetupHealthResponse>("/api/agent/setup-health", token);
+}
+
 export async function setAgentHealingPaused(
   token: string,
   paused: boolean,
@@ -280,6 +285,7 @@ export async function updateHealRules(
     modes?: Record<string, "auto" | "approval">;
     concurrencyMode?: "concurrent" | "sequential";
     healJobPods?: boolean;
+    healWorkerPods?: boolean;
   },
 ): Promise<HealRulesResponse> {
   return apiFetch<HealRulesResponse>(

@@ -8,6 +8,10 @@ export interface PodSummary {
   ready: boolean;
   issueType: string | null;
   hasActiveHeal: boolean;
+  /** Pod is owned by a Kubernetes Job, CronJob, or ScaledJob. */
+  jobOwned?: boolean;
+  /** Pod belongs to a worker Deployment (name or labels include “worker”). */
+  workerOwned?: boolean;
 }
 
 export type HealStatus =
@@ -215,6 +219,8 @@ export interface HealRulesResponse {
   concurrencyMode: "concurrent" | "sequential";
   /** When true, pod rules also apply to Job / CronJob / ScaledJob pods. */
   healJobPods: boolean;
+  /** When true, pod rules also apply to worker Deployment pods. */
+  healWorkerPods: boolean;
 }
 
 export interface ConnectClusterResult {
@@ -347,6 +353,18 @@ export interface TeamsConnectionTestRequest {
 export interface TeamsConnectionTestResponse {
   ok: boolean;
   message: string;
+}
+
+export interface SetupHealthCheck {
+  id: string;
+  ok: boolean;
+  detail: string;
+  meta?: Record<string, string | number | boolean | null>;
+}
+
+export interface SetupHealthResponse {
+  checkedAt: string;
+  checks: SetupHealthCheck[];
 }
 
 export interface NodeCondition {

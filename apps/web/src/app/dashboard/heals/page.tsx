@@ -10,7 +10,7 @@ import {
   Clock,
 } from "lucide-react";
 
-import { Topbar } from "@/components/dashboard/Topbar";
+
 import { PodActionBadge } from "@/components/dashboard/PodActionBadge";
 import { useHeals } from "@/lib/query";
 import { useClusterStore } from "@/stores/cluster";
@@ -62,9 +62,7 @@ export default function HealLogPage() {
   }, [heals, searchTerm, selectedStatus]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <Topbar title="Heal log" />
-
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="flex-1 p-5 md:p-6 space-y-6">
         {/* Header Title Section */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">

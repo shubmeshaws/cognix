@@ -46,3 +46,35 @@ export async function fetchOllamaTags(
   }
   return (await res.json()) as OllamaTagsResponse;
 }
+
+const TAGS_CACHE_MS = 30_000;
+let tagsCache: {
+  baseUrl: string;
+  tags: OllamaTagsResponse;
+  fetchedAt: number;
+} | null = null;
+
+export async function getCachedOllamaTags(
+  baseUrl: string,
+): Promise<OllamaTagsResponse> {
+  const now = Date.now();
+  if (
+    tagsCache &&
+    tagsCache.baseUrl === baseUrl &&
+    now - tagsCache.fetchedAt < TAGS_CACHE_MS
+  ) {
+    return tagsCache.tags;
+  }
+  const tags = await fetchOllamaTags(baseUrl);
+  tagsCache = { baseUrl, tags, fetchedAt: now };
+  return tags;
+}
+
+/** Resolve configured model to an installed Ollama model before chat/generate calls. */
+export async function resolveOllamaModelForRequest(
+  baseUrl: string,
+  preferred: string,
+): Promise<{ model: string; autoSelected: boolean }> {
+  const tags = await getCachedOllamaTags(baseUrl);
+  return resolveOllamaModel(tags.models, preferred);
+}
