@@ -193,10 +193,13 @@ export type HealRuleId =
   | "NodePressure"
   | "MultiVolumeAttachment";
 
+export type HealRuleCategory = "pods" | "nodes" | "pvc" | "addons";
+
 export interface HealRuleDefinition {
   id: HealRuleId;
   label: string;
   description: string;
+  category: HealRuleCategory;
 }
 
 export type HealRuleMode = "auto" | "approval";
@@ -210,6 +213,8 @@ export interface HealRulesResponse {
   modes: Record<HealRuleId, HealRuleMode>;
   approvalRules: HealRuleId[];
   concurrencyMode: "concurrent" | "sequential";
+  /** When true, pod rules also apply to Job / CronJob / ScaledJob pods. */
+  healJobPods: boolean;
 }
 
 export interface ConnectClusterResult {

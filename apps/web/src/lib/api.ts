@@ -279,6 +279,7 @@ export async function updateHealRules(
     enabled: string[];
     modes?: Record<string, "auto" | "approval">;
     concurrencyMode?: "concurrent" | "sequential";
+    healJobPods?: boolean;
   },
 ): Promise<HealRulesResponse> {
   return apiFetch<HealRulesResponse>(

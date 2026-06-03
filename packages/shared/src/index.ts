@@ -80,16 +80,20 @@ export interface TerminalLine {
 }
 
 export type {
+  HealRuleCategory,
   HealRuleDefinition,
   HealRuleId,
   HealRuleMode,
+  HealRuleSectionDefinition,
 } from "./heal-rules.js";
 export {
   ALL_HEAL_RULE_IDS,
   approvalHealRulesFromModes,
   buildHealRulesState,
   DEFAULT_ENABLED_HEAL_RULES,
+  groupHealRulesByCategory,
   HEAL_RULE_CATALOG,
+  HEAL_RULE_SECTIONS,
   healRuleRequiresApproval,
   healRulesFromState,
   normalizeHealRuleIds,

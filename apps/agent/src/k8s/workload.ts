@@ -30,3 +30,12 @@ export function matchScaledJobName(
 }
 
 export const KEDA_SCALEDJOB_LABEL = "scaledjob.keda.sh/name";
+
+const JOB_OWNED_KINDS = new Set<WorkloadKind>(["Job", "CronJob", "ScaledJob"]);
+
+/** True when the pod belongs to a batch-style workload (Job, CronJob, or ScaledJob). */
+export function isJobOwnedWorkload(
+  workload: { kind: string } | null | undefined,
+): boolean {
+  return Boolean(workload && JOB_OWNED_KINDS.has(workload.kind as WorkloadKind));
+}

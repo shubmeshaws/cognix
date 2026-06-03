@@ -135,4 +135,8 @@ export class WatcherService {
   ): void {
     this.manager.setConcurrencyMode(clusterId, mode);
   }
+
+  setHealJobPods(clusterId: string, enabled: boolean): void {
+    this.manager.setHealJobPods(clusterId, enabled);
+  }
 }

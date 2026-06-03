@@ -86,6 +86,8 @@ export const clusters = pgTable("clusters", {
   concurrencyMode: concurrencyModeEnum("concurrency_mode")
     .notNull()
     .default("concurrent"),
+  /** When true, pod heal rules also apply to Job / CronJob / ScaledJob pods. */
+  healJobPods: boolean("heal_job_pods").notNull().default(false),
 });
 
 export const healRecords = pgTable("heal_records", {

@@ -86,7 +86,9 @@ export function Sidebar() {
             pathname === href ||
             (href === "/dashboard/meshy" && pathname.startsWith("/dashboard/meshy")) ||
             (href === "/dashboard/settings" &&
-              pathname.startsWith("/dashboard/settings"));
+              pathname.startsWith("/dashboard/settings")) ||
+            (href === "/dashboard/rules" &&
+              pathname.startsWith("/dashboard/rules"));
           const count = badgeKey ? badges[badgeKey] : 0;
           return (
             <Link

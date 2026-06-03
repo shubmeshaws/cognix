@@ -8,6 +8,7 @@ import type { AgentEventBus } from "../events/bus.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { kubeconfigToBase64 } from "../lib/kubeconfig.js";
 import { ClusterConnection } from "../k8s/connection.js";
+import { isJobOwnedWorkload } from "../k8s/workload.js";
 import { PodReasoner } from "../llm/reasoner.js";
 import {
   defaultEnabledHealRules,
@@ -61,6 +62,7 @@ export class WatcherManager {
     Record<HealRuleId, HealRuleMode>
   >();
   private readonly concurrencyModes = new Map<string, "concurrent" | "sequential">();
+  private readonly healJobPods = new Map<string, boolean>();
   private readonly reasoner: PodReasoner;
 
   constructor(private readonly deps: WatcherManagerDeps) {
@@ -134,6 +136,14 @@ export class WatcherManager {
     this.concurrencyModes.set(clusterId, mode);
   }
 
+  setHealJobPods(clusterId: string, enabled: boolean): void {
+    this.healJobPods.set(clusterId, enabled);
+  }
+
+  isHealJobPodsEnabledForCluster(clusterId: string): boolean {
+    return this.healJobPods.get(clusterId) ?? false;
+  }
+
   getConcurrencyMode(clusterId: string): "concurrent" | "sequential" {
     return this.concurrencyModes.get(clusterId) ?? "concurrent";
   }
@@ -203,6 +213,21 @@ export class WatcherManager {
       };
     }
 
+    const workload = await entry.connection.resolveWorkloadForPod(
+      podName,
+      namespace,
+    );
+    if (
+      isJobOwnedWorkload(workload) &&
+      !this.isHealJobPodsEnabledForCluster(clusterId)
+    ) {
+      return {
+        ok: false,
+        error:
+          "Job pod healing is off — enable “Heal job pods” in Rules → Pods and click Save",
+      };
+    }
+
     await entry.watcher.inspectPod(pod, { manual: true });
     return { ok: true };
   }
@@ -233,6 +258,7 @@ export class WatcherManager {
         enabledHealRules: clusters.enabledHealRules,
         healRuleModes: clusters.healRuleModes,
         concurrencyMode: clusters.concurrencyMode,
+        healJobPods: clusters.healJobPods,
       })
       .from(clusters)
       .where(eq(clusters.id, clusterId))
@@ -247,6 +273,7 @@ export class WatcherManager {
     );
     this.healRuleModes.set(clusterId, modes);
     this.concurrencyModes.set(clusterId, row.concurrencyMode ?? "concurrent");
+    this.healJobPods.set(clusterId, row.healJobPods ?? false);
   }
 
   get activeClusterCount(): number {
@@ -340,6 +367,7 @@ export class WatcherManager {
     );
     this.healRuleModes.set(clusterId, modes);
     this.concurrencyModes.set(clusterId, row.concurrencyMode ?? "concurrent");
+    this.healJobPods.set(clusterId, row.healJobPods ?? false);
 
     const watcherDeps: PodWatcherDeps = {
       db: this.deps.db,
@@ -354,6 +382,7 @@ export class WatcherManager {
       isApprovalRequired: (issue) =>
         this.isApprovalRequiredForCluster(clusterId, issue),
       isHealingPaused: () => this.healingPaused,
+      isHealJobPodsEnabled: () => this.isHealJobPodsEnabledForCluster(clusterId),
       getConcurrencyMode: () => this.getConcurrencyMode(clusterId),
       refreshHealRules: () => this.refreshHealRulesFromDb(clusterId),
       maxMemoryLimit: this.deps.env.MAX_MEMORY_LIMIT,
@@ -389,6 +418,7 @@ export class WatcherManager {
     this.enabledHealRules.delete(clusterId);
     this.healRuleModes.delete(clusterId);
     this.concurrencyModes.delete(clusterId);
+    this.healJobPods.delete(clusterId);
     this.deps.log?.info({ clusterId }, "watcher manager stopped cluster");
   }
 

@@ -7,7 +7,7 @@ import type { AgentEventBus } from "../events/bus.js";
 import { healNeedsApproval } from "../healer/heal-meta.js";
 import { buildOomMemorySnapshot } from "../healer/oom-snapshot.js";
 import type { ClusterConnection } from "../k8s/connection.js";
-import type { WorkloadRef } from "../k8s/workload.js";
+import { isJobOwnedWorkload, type WorkloadRef } from "../k8s/workload.js";
 import { fallbackDiagnosis } from "../llm/fallback-diagnosis.js";
 import { PodReasoner } from "../llm/reasoner.js";
 import type { PodDiagnosis } from "../llm/types.js";
@@ -43,6 +43,7 @@ export interface PodWatcherDeps {
   isHealRuleEnabled: (issue: IssueType) => boolean;
   isApprovalRequired: (issue: IssueType) => boolean;
   isHealingPaused: () => boolean;
+  isHealJobPodsEnabled: () => boolean;
   getConcurrencyMode: () => "concurrent" | "sequential";
   refreshHealRules?: () => Promise<void>;
   maxMemoryLimit: string;
@@ -265,6 +266,28 @@ export class PodWatcher {
     const workload = this.connection
       ? await this.connection.resolveWorkloadForPod(podName, namespace)
       : null;
+
+    if (
+      isJobOwnedWorkload(workload) &&
+      !this.deps.isHealJobPodsEnabled()
+    ) {
+      this.deps.log?.info(
+        {
+          clusterId: this.clusterId,
+          podName,
+          namespace,
+          issueType,
+          workloadKind: workload?.kind,
+          workloadName: workload?.name,
+          manual,
+        },
+        manual
+          ? "manual heal skipped — job pod healing disabled"
+          : "heal skipped — job pod healing disabled",
+      );
+      return;
+    }
+
     const deploymentName =
       workload?.kind === "Deployment" ? workload.name : null;
     const deployInflightKey = workload

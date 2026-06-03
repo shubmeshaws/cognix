@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { matchScaledJobName } from "./workload.js";
+import { isJobOwnedWorkload, matchScaledJobName } from "./workload.js";
 
 function inferScaledJobNameFromJob(jobName: string): string | null {
   const marker = "-scaledjob";
@@ -38,5 +38,19 @@ describe("matchScaledJobName", () => {
       matchScaledJobName("api-worker-abc", ["api", "api-worker"]),
       "api-worker",
     );
+  });
+});
+
+describe("isJobOwnedWorkload", () => {
+  it("returns true for batch workload kinds", () => {
+    assert.equal(isJobOwnedWorkload({ kind: "Job", name: "x", namespace: "ns" }), true);
+    assert.equal(isJobOwnedWorkload({ kind: "CronJob", name: "x", namespace: "ns" }), true);
+    assert.equal(isJobOwnedWorkload({ kind: "ScaledJob", name: "x", namespace: "ns" }), true);
+  });
+
+  it("returns false for long-running workload kinds", () => {
+    assert.equal(isJobOwnedWorkload({ kind: "Deployment", name: "x", namespace: "ns" }), false);
+    assert.equal(isJobOwnedWorkload({ kind: "StatefulSet", name: "x", namespace: "ns" }), false);
+    assert.equal(isJobOwnedWorkload(null), false);
   });
 });
