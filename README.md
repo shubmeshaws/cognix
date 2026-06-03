@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/cognix-logo.svg" alt="Cognix" height="52" />
+  <img src="docs/assets/cognix-logo.svg?sanitize=true" alt="Cognix" height="52" />
 </p>
 
 <h1 align="center">Kubernetes Healing Agent</h1>
