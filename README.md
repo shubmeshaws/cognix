@@ -105,7 +105,7 @@ corepack enable && corepack prepare pnpm@9.15.0 --activate
 ### Step 1 — Clone the repository
 
 ```bash
-git clone https://github.com/shubmeshaws/rezolv.git cognix
+git clone https://github.com/shubmeshaws/cognix.git cognix
 cd cognix
 chmod +x scripts/ollama-pull.sh
 ```
@@ -274,7 +274,7 @@ Runs **postgres**, **ollama**, **agent**, and **web** entirely in Docker. Best f
 ### Step 1 — Clone the repository
 
 ```bash
-git clone https://github.com/shubmeshaws/rezolv.git cognix
+git clone https://github.com/shubmeshaws/cognix.git cognix
 cd cognix
 chmod +x scripts/ollama-pull.sh
 ```
@@ -428,7 +428,7 @@ Deploy Cognix into a Kubernetes cluster using the chart in [`helm/kubehealer`](h
 ### Step 1 — Clone the repository
 
 ```bash
-git clone https://github.com/shubmeshaws/rezolv.git cognix
+git clone https://github.com/shubmeshaws/cognix.git cognix
 cd cognix
 ```
 
