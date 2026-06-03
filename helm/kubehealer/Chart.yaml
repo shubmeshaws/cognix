@@ -1,0 +1,12 @@
+apiVersion: v2
+name: kubehealer
+description: AI-assisted Kubernetes pod healing — web dashboard and agent
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+keywords:
+  - kubernetes
+  - healing
+  - observability
+maintainers:
+  - name: KubeHealer

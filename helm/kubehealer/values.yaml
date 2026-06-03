@@ -1,0 +1,76 @@
+# Default values for kubehealer.
+# Copy to my-values.yaml and customize before: helm install -f my-values.yaml
+
+# Shared secret — MUST be at least 32 characters. Same value used by agent + web.
+jwtSecret: "change-me-generate-with-openssl-rand-base64-32"
+
+# Optional second secret for NextAuth (defaults to jwtSecret if empty)
+nextAuthSecret: ""
+
+agent:
+  replicaCount: 1
+  image:
+    repository: kubehealer/agent
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3001
+  resources: {}
+  env:
+    ollamaUrl: "http://ollama:11434"
+    maxMemoryLimit: "4Gi"
+    allowLocalKubeconfig: "false"
+  # Persist LLM + integration settings (.kubehealer/)
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+
+web:
+  replicaCount: 1
+  image:
+    repository: kubehealer/web
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+  resources: {}
+  env:
+    nextPublicApiUrl: "http://kubehealer-agent:3001"
+    nextAuthUrl: "http://localhost:3000"
+    authDisabled: "false"
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    web: kubehealer.local
+    api: api.kubehealer.local
+  tls: []
+
+postgresql:
+  enabled: true
+  image: postgres:16-alpine
+  auth:
+    username: kubehealer
+    password: kubehealer
+    database: kubehealer
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClass: ""
+
+# Set true only if you deploy Ollama separately and point agent.env.ollamaUrl
+ollama:
+  enabled: false
+
+serviceAccount:
+  create: true
+  name: ""
+
+# RBAC for in-cluster cluster registration (optional)
+rbac:
+  create: true

@@ -9,7 +9,6 @@ import type { Env } from "../config/env.js";
 const env: Env = {
   PORT: 3001,
   DATABASE_URL: "postgresql://localhost:5432/kubehealer",
-  REDIS_URL: "redis://localhost:6379",
   OLLAMA_URL: "http://localhost:11434",
   JWT_SECRET: "test-jwt-secret-at-least-32-characters-long",
 };
