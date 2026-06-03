@@ -1,3 +1,9 @@
+import type { MeshyVoiceLanguage } from "@/lib/meshy-voice-language";
+import {
+  loadMeshyVoiceLanguage,
+  meshyLanguageToSpeechRecognitionLang,
+} from "@/lib/meshy-voice-language";
+
 export type MeshyVoiceGender = "female" | "male";
 
 const FEMALE_PATTERNS = [
@@ -29,6 +35,11 @@ const MALE_PATTERNS = [
 
 let cachedVoiceUri: string | null = null;
 let cachedGender: MeshyVoiceGender | null = null;
+let cachedLanguage: MeshyVoiceLanguage | null = null;
+
+function matchesAny(name: string, patterns: RegExp[]): boolean {
+  return patterns.some((p) => p.test(name));
+}
 
 export function loadMeshyVoiceGender(): MeshyVoiceGender {
   if (typeof window === "undefined") return "female";
@@ -39,46 +50,62 @@ export function loadMeshyVoiceGender(): MeshyVoiceGender {
 export function saveMeshyVoiceGender(gender: MeshyVoiceGender): void {
   if (typeof window === "undefined") return;
   localStorage.setItem("meshy-voice-gender", gender);
+  resetMeshyVoiceCache();
+}
+
+export function resetMeshyVoiceCache(): void {
   cachedVoiceUri = null;
   cachedGender = null;
+  cachedLanguage = null;
 }
 
-function englishVoices(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
-  return voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
-}
-
-function matchesAny(name: string, patterns: RegExp[]): boolean {
-  return patterns.some((p) => p.test(name));
+function voicesForLanguage(
+  voices: SpeechSynthesisVoice[],
+  language: MeshyVoiceLanguage = loadMeshyVoiceLanguage(),
+): SpeechSynthesisVoice[] {
+  const prefix = language.toLowerCase();
+  const matched = voices.filter((v) => v.lang.toLowerCase().startsWith(prefix));
+  if (matched.length > 0) return matched;
+  return voices.filter((v) => v.lang.toLowerCase().includes(prefix));
 }
 
 export function pickMeshyVoice(
   voices: SpeechSynthesisVoice[],
   gender: MeshyVoiceGender = loadMeshyVoiceGender(),
+  language: MeshyVoiceLanguage = loadMeshyVoiceLanguage(),
 ): SpeechSynthesisVoice | null {
-  if (cachedVoiceUri && cachedGender === gender) {
+  if (
+    cachedVoiceUri &&
+    cachedGender === gender &&
+    cachedLanguage === language
+  ) {
     const cached = voices.find((v) => v.voiceURI === cachedVoiceUri);
     if (cached) return cached;
   }
 
-  const en = englishVoices(voices);
-  if (en.length === 0) return null;
+  const localized = voicesForLanguage(voices, language);
+  const pool = localized.length > 0 ? localized : voices;
 
   const patterns = gender === "female" ? FEMALE_PATTERNS : MALE_PATTERNS;
   const opposite =
     gender === "female" ? MALE_PATTERNS : FEMALE_PATTERNS;
 
-  const ranked = en.filter((v) => matchesAny(v.name, patterns));
+  const ranked = pool.filter((v) => matchesAny(v.name, patterns));
   if (ranked.length > 0) {
     const voice = ranked[0];
     cachedVoiceUri = voice.voiceURI;
     cachedGender = gender;
+    cachedLanguage = language;
     return voice;
   }
 
-  const neutral = en.filter((v) => !matchesAny(v.name, opposite));
-  const voice = neutral[0] ?? en[0];
-  cachedVoiceUri = voice.voiceURI;
-  cachedGender = gender;
+  const neutral = pool.filter((v) => !matchesAny(v.name, opposite));
+  const voice = neutral[0] ?? pool[0] ?? null;
+  if (voice) {
+    cachedVoiceUri = voice.voiceURI;
+    cachedGender = gender;
+    cachedLanguage = language;
+  }
   return voice;
 }
 
@@ -104,7 +131,7 @@ export async function waitForSpeechVoices(
 
 export async function speakWithBrowserTts(
   text: string,
-  options?: { rate?: number; gender?: MeshyVoiceGender },
+  options?: { rate?: number; gender?: MeshyVoiceGender; language?: MeshyVoiceLanguage },
 ): Promise<void> {
   if (typeof window === "undefined" || !text.trim()) return;
 
@@ -113,10 +140,16 @@ export async function speakWithBrowserTts(
 
   synth.cancel();
   const voices = await waitForSpeechVoices(synth);
-  const voice = pickMeshyVoice(voices, options?.gender ?? loadMeshyVoiceGender());
+  const language = options?.language ?? loadMeshyVoiceLanguage();
+  const voice = pickMeshyVoice(
+    voices,
+    options?.gender ?? loadMeshyVoiceGender(),
+    language,
+  );
 
   return new Promise((resolve) => {
     const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = meshyLanguageToSpeechRecognitionLang(language);
     if (voice) utterance.voice = voice;
     utterance.rate = options?.rate ?? 0.92;
     utterance.pitch = 1;
@@ -147,12 +180,13 @@ export async function speakWithHuggingFace(
   token: string,
   onAudio?: (audio: HTMLAudioElement) => void,
   voiceGender: MeshyVoiceGender = loadMeshyVoiceGender(),
+  language: MeshyVoiceLanguage = loadMeshyVoiceLanguage(),
 ): Promise<boolean> {
   try {
     const response = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, token, voiceGender }),
+      body: JSON.stringify({ text, token, voiceGender, lang: language }),
     });
     if (!response.ok) return false;
 
@@ -186,21 +220,28 @@ export async function speakMeshyText(
     useHuggingFace: boolean;
     hfToken: string;
     gender?: MeshyVoiceGender;
+    language?: MeshyVoiceLanguage;
     rate?: number;
     onAudio?: (audio: HTMLAudioElement) => void;
   },
 ): Promise<void> {
-  if (opts.useHuggingFace) {
+  const language = opts.language ?? loadMeshyVoiceLanguage();
+  const tryNeuralTts = opts.useHuggingFace || language !== "en";
+
+  if (tryNeuralTts) {
     const ok = await speakWithHuggingFace(
       text,
       opts.hfToken,
       opts.onAudio,
       opts.gender ?? loadMeshyVoiceGender(),
+      language,
     );
     if (ok) return;
   }
+
   await speakWithBrowserTts(text, {
     rate: opts.rate,
     gender: opts.gender,
+    language,
   });
 }

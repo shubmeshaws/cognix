@@ -11,9 +11,24 @@ const HF_MODEL =
 
 type VoiceGender = "female" | "male";
 
+const VALID_LANGS = new Set([
+  "en", "ko", "ja", "ar", "bg", "cs", "da", "de", "el", "es", "et", "fi", "fr",
+  "hi", "hr", "hu", "id", "it", "lt", "lv", "nl", "pl", "pt", "ro", "ru", "sk",
+  "sl", "sv", "tr", "uk", "vi",
+]);
+
+function resolveLang(requested: unknown): string {
+  if (typeof requested === "string") {
+    const code = requested.trim().toLowerCase();
+    if (VALID_LANGS.has(code)) return code;
+  }
+  return SUPERTONIC_LANG;
+}
+
 async function synthesizeWithSupertonic(
   text: string,
   voiceGender: VoiceGender,
+  lang: string,
 ): Promise<Response | null> {
   const voice =
     voiceGender === "male" ? SUPERTONIC_VOICE_MALE : SUPERTONIC_VOICE_FEMALE;
@@ -25,7 +40,7 @@ async function synthesizeWithSupertonic(
       body: JSON.stringify({
         text,
         voice,
-        lang: SUPERTONIC_LANG,
+        lang,
         steps: 8,
         speed: 1.05,
         response_format: "wav",
@@ -88,6 +103,7 @@ export async function POST(request: Request) {
     const token = typeof body?.token === "string" ? body.token.trim() : "";
     const voiceGender: VoiceGender =
       body?.voiceGender === "male" ? "male" : "female";
+    const lang = resolveLang(body?.lang);
 
     if (!text || !String(text).trim()) {
       return NextResponse.json({ error: "Missing text" }, { status: 400 });
@@ -99,7 +115,7 @@ export async function POST(request: Request) {
       await ensureSupertonicServer();
     }
 
-    const supertonic = await synthesizeWithSupertonic(cleanText, voiceGender);
+    const supertonic = await synthesizeWithSupertonic(cleanText, voiceGender, lang);
     if (supertonic) {
       return supertonic;
     }

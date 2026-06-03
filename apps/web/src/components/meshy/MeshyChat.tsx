@@ -24,6 +24,7 @@ import { Topbar } from "@/components/dashboard/Topbar";
 import { cn } from "@/lib/utils";
 import { approveHeal, fetchLlmConfig } from "@/lib/api";
 import { speakMeshyText } from "@/lib/meshy-tts";
+import { meshyLanguageToSpeechRecognitionLang } from "@/lib/meshy-voice-language";
 import { summarizeForVoice } from "@/lib/voice";
 import { mergeTranscriptPartsFrom } from "@/lib/voice-transcript";
 import {
@@ -91,7 +92,7 @@ const MESHY_WELCOME_MESSAGE: Message = {
 export function MeshyChat() {
   const activeClusterId = useClusterStore((s) => s.activeClusterId);
   const token = useAgentToken();
-  const { hfToken, useHuggingFace, voiceGender } = useMeshy();
+  const { hfToken, useHuggingFace, voiceGender, voiceLanguage } = useMeshy();
   const meshyChatRetention = useSettingsStore((s) => s.meshyChatRetention);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const settingsHydrated = useSettingsStore((s) => s.hydrated);
@@ -365,7 +366,8 @@ export function MeshyChat() {
   const setupSpeechRecognition = () => {
     teardownSpeechRecognition();
 
-    const recognition = createMeshySpeechRecognition({
+    const recognition = createMeshySpeechRecognition(
+      {
       onStart: () => {
         if (utteranceActiveRef.current) {
           setVoicePhase("speaking");
@@ -436,7 +438,9 @@ export function MeshyChat() {
           resetUtteranceCapture();
         }
       },
-    });
+    },
+    { lang: meshyLanguageToSpeechRecognitionLang(voiceLanguage) },
+    );
 
     if (!recognition) return false;
 
@@ -547,6 +551,7 @@ export function MeshyChat() {
       useHuggingFace,
       hfToken,
       gender: voiceGender,
+      language: voiceLanguage,
       rate: 0.92,
       onAudio: (audio) => {
         if (
@@ -584,6 +589,12 @@ export function MeshyChat() {
   };
 
   useEffect(() => () => teardownSpeechRecognition(), []);
+
+  useEffect(() => {
+    if (!showVoiceModal || !recognitionRef.current) return;
+    recognitionRef.current.lang =
+      meshyLanguageToSpeechRecognitionLang(voiceLanguage);
+  }, [voiceLanguage, showVoiceModal]);
 
   const startVoiceAssistant = async () => {
     setShowVoiceModal(true);

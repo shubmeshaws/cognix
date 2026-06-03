@@ -24,6 +24,7 @@ export function isBenignSpeechError(code: string | undefined): boolean {
 
 export function createMeshySpeechRecognition(
   handlers: MeshySpeechRecognitionHandlers,
+  options?: { lang?: string },
 ): any | null {
   if (typeof window === "undefined") return null;
 
@@ -35,9 +36,10 @@ export function createMeshySpeechRecognition(
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.lang =
-    typeof navigator !== "undefined"
+    options?.lang ??
+    (typeof navigator !== "undefined"
       ? navigator.language || "en-US"
-      : "en-US";
+      : "en-US");
 
   recognition.onstart = () => handlers.onStart?.();
 

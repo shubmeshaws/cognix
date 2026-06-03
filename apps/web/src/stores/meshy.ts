@@ -2,9 +2,11 @@ import { create } from "zustand";
 import { useState, useEffect } from "react";
 
 import type { MeshyVoiceGender } from "@/lib/meshy-tts";
-import { saveMeshyVoiceGender } from "@/lib/meshy-tts";
+import { resetMeshyVoiceCache, saveMeshyVoiceGender } from "@/lib/meshy-tts";
+import type { MeshyVoiceLanguage } from "@/lib/meshy-voice-language";
+import { loadMeshyVoiceLanguage, saveMeshyVoiceLanguage } from "@/lib/meshy-voice-language";
 
-export type { MeshyVoiceGender };
+export type { MeshyVoiceGender, MeshyVoiceLanguage };
 
 interface MeshyState {
   enabled: boolean;
@@ -16,6 +18,8 @@ interface MeshyState {
   setUseHuggingFace: (use: boolean) => void;
   voiceGender: MeshyVoiceGender;
   setVoiceGender: (gender: MeshyVoiceGender) => void;
+  voiceLanguage: MeshyVoiceLanguage;
+  setVoiceLanguage: (language: MeshyVoiceLanguage) => void;
   speakOnIssueOccurs: boolean;
   setSpeakOnIssueOccurs: (speak: boolean) => void;
   speakOnIssueResolved: boolean;
@@ -59,6 +63,7 @@ export const useMeshyStore = create<MeshyState>((set, get) => ({
   hfToken: loadHfToken(),
   useHuggingFace: loadUseHuggingFace(),
   voiceGender: loadVoiceGender(),
+  voiceLanguage: loadMeshyVoiceLanguage(),
   speakOnIssueOccurs: loadSpeakOnIssueOccurs(),
   speakOnIssueResolved: loadSpeakOnIssueResolved(),
 
@@ -91,6 +96,12 @@ export const useMeshyStore = create<MeshyState>((set, get) => ({
   setVoiceGender: (gender) => {
     saveMeshyVoiceGender(gender);
     set({ voiceGender: gender });
+  },
+
+  setVoiceLanguage: (language) => {
+    saveMeshyVoiceLanguage(language);
+    resetMeshyVoiceCache();
+    set({ voiceLanguage: language });
   },
 
   setSpeakOnIssueOccurs: (speak) => {
@@ -130,6 +141,8 @@ export function useMeshy() {
     setUseHuggingFace: store.setUseHuggingFace,
     voiceGender: mounted ? store.voiceGender : "female",
     setVoiceGender: store.setVoiceGender,
+    voiceLanguage: mounted ? store.voiceLanguage : "en",
+    setVoiceLanguage: store.setVoiceLanguage,
     speakOnIssueOccurs: mounted ? store.speakOnIssueOccurs : true,
     setSpeakOnIssueOccurs: store.setSpeakOnIssueOccurs,
     speakOnIssueResolved: mounted ? store.speakOnIssueResolved : true,

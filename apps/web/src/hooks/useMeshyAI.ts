@@ -12,6 +12,7 @@ export function useMeshyAI() {
     useHuggingFace,
     hfToken,
     voiceGender,
+    voiceLanguage,
     speakOnIssueOccurs,
     speakOnIssueResolved,
   } = useMeshyStore();
@@ -100,6 +101,7 @@ export function useMeshyAI() {
           useHuggingFace,
           hfToken,
           gender: voiceGender,
+          language: voiceLanguage,
           rate: 0.88,
         });
       }
@@ -113,6 +115,7 @@ export function useMeshyAI() {
     useHuggingFace,
     hfToken,
     voiceGender,
+    voiceLanguage,
     speakOnIssueOccurs,
     speakOnIssueResolved,
   ]);
