@@ -425,3 +425,41 @@ export interface ResetPasswordResponse {
   temporaryPassword: string;
 }
 
+export type SsoProviderId = "google" | "github" | "linkedin";
+
+export interface SsoProviderAdminView {
+  enabled: boolean;
+  clientId: string;
+  clientSecretSet: boolean;
+  clientSecretPreview: string | null;
+  configured: boolean;
+  allowedDomains?: string;
+}
+
+export interface SsoConfigResponse {
+  providers: Record<SsoProviderId, SsoProviderAdminView>;
+}
+
+export interface SsoConfigPatch {
+  google?: {
+    enabled?: boolean;
+    clientId?: string;
+    clientSecret?: string;
+    allowedDomains?: string;
+  };
+  github?: {
+    enabled?: boolean;
+    clientId?: string;
+    clientSecret?: string;
+  };
+  linkedin?: {
+    enabled?: boolean;
+    clientId?: string;
+    clientSecret?: string;
+  };
+}
+
+export interface SsoPublicResponse {
+  providers: SsoProviderId[];
+}
+

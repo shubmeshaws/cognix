@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { Env } from "./config/env.js";
 import { loadIntegrationsFromDisk } from "./config/integrations-store.js";
 import { loadLlmConfigFromDisk } from "./config/llm-config-store.js";
+import { loadSsoFromDisk } from "./config/sso-store.js";
 import type { ServerDeps } from "./context/deps.js";
 import { createDb } from "./db/client.js";
 import { clusters } from "./db/schema.js";
@@ -42,6 +43,7 @@ export async function buildServer(env: Env): Promise<BuildServerResult> {
 
   await loadIntegrationsFromDisk();
   await loadLlmConfigFromDisk();
+  await loadSsoFromDisk();
   const { getEffectiveTeamsWebhookUrl } = await import(
     "./services/teams-config.js"
   );
@@ -97,6 +99,7 @@ export async function buildServer(env: Env): Promise<BuildServerResult> {
   await app.register(usersPlugin, {
     prefix: "/api/users",
     db,
+    env,
   });
 
   await app.register(clustersPlugin, {

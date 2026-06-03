@@ -4,7 +4,10 @@ import { signIn, auth } from "@/auth";
 import { CognixLogo } from "@/components/brand/CognixLogo";
 import { LoginPanel } from "@/components/auth/LoginPanel";
 import { isAuthDisabled } from "@/lib/auth-disabled";
-import { fetchAuthSetupStatus } from "@/lib/auth-agent";
+import {
+  fetchAuthSetupStatus,
+  fetchSsoPublicConfig,
+} from "@/lib/auth-agent";
 import { fetchSetupStatus } from "@/lib/setup-api";
 
 export default async function LoginPage() {
@@ -31,14 +34,10 @@ export default async function LoginPage() {
     redirect("/setup");
   }
 
-  const { needsSetup } = await fetchAuthSetupStatus();
-
-  const googleEnabled =
-    Boolean(process.env.GOOGLE_CLIENT_ID) &&
-    Boolean(process.env.GOOGLE_CLIENT_SECRET);
-  const githubEnabled =
-    Boolean(process.env.GITHUB_CLIENT_ID) &&
-    Boolean(process.env.GITHUB_CLIENT_SECRET);
+  const [{ needsSetup }, ssoPublic] = await Promise.all([
+    fetchAuthSetupStatus(),
+    fetchSsoPublicConfig(),
+  ]);
 
   async function signInWithGoogle() {
     "use server";
@@ -50,9 +49,14 @@ export default async function LoginPage() {
     await signIn("github", { redirectTo: "/dashboard" });
   }
 
+  async function signInWithLinkedin() {
+    "use server";
+    await signIn("linkedin", { redirectTo: "/dashboard" });
+  }
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-8">
-      <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-12 shadow-sm">
+      <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-8 shadow-sm sm:p-10">
         <div className="mb-10 flex flex-col items-center gap-4 text-center">
           <CognixLogo variant="inline" markSize={64} showTagline />
           <p className="text-base text-muted-foreground">
@@ -64,10 +68,10 @@ export default async function LoginPage() {
 
         <LoginPanel
           needsSetup={needsSetup}
-          googleEnabled={googleEnabled}
-          githubEnabled={githubEnabled}
+          ssoProviders={ssoPublic.providers}
           onGoogleSignIn={signInWithGoogle}
           onGithubSignIn={signInWithGithub}
+          onLinkedinSignIn={signInWithLinkedin}
         />
       </div>
     </main>

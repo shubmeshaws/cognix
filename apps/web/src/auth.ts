@@ -2,15 +2,41 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
+import LinkedIn from "next-auth/providers/linkedin";
 import type { Provider } from "next-auth/providers";
 
 import { authConfig } from "@/auth.config";
 import {
+  fetchSsoInternalConfig,
   loginWithAgentCredentials,
   syncOAuthUserWithAgent,
 } from "@/lib/auth-agent";
 
-function buildProviders(): Provider[] {
+const OAUTH_PROVIDERS = ["google", "github", "linkedin"] as const;
+type OAuthProviderId = (typeof OAUTH_PROVIDERS)[number];
+
+function envOAuthSettings(
+  id: OAuthProviderId,
+): { clientId: string; clientSecret: string } | undefined {
+  if (id === "google") {
+    const clientId = process.env.GOOGLE_CLIENT_ID?.trim() ?? "";
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim() ?? "";
+    if (!clientId || !clientSecret) return undefined;
+    return { clientId, clientSecret };
+  }
+  if (id === "github") {
+    const clientId = process.env.GITHUB_CLIENT_ID?.trim() ?? "";
+    const clientSecret = process.env.GITHUB_CLIENT_SECRET?.trim() ?? "";
+    if (!clientId || !clientSecret) return undefined;
+    return { clientId, clientSecret };
+  }
+  const clientId = process.env.LINKEDIN_CLIENT_ID?.trim() ?? "";
+  const clientSecret = process.env.LINKEDIN_CLIENT_SECRET?.trim() ?? "";
+  if (!clientId || !clientSecret) return undefined;
+  return { clientId, clientSecret };
+}
+
+async function buildProviders(): Promise<Provider[]> {
   const providers: Provider[] = [
     Credentials({
       name: "Email and password",
@@ -45,34 +71,54 @@ function buildProviders(): Provider[] {
     }),
   ];
 
-  const googleId = process.env.GOOGLE_CLIENT_ID?.trim();
-  const googleSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-  if (googleId && googleSecret) {
-    providers.push(
-      Google({
-        clientId: googleId,
-        clientSecret: googleSecret,
-      }),
-    );
-  }
+  const sso = await fetchSsoInternalConfig().catch(() => ({
+    providers: {} as Partial<
+      Record<OAuthProviderId, { enabled: boolean; clientId: string; clientSecret: string }>
+    >,
+  }));
 
-  const githubId = process.env.GITHUB_CLIENT_ID?.trim();
-  const githubSecret = process.env.GITHUB_CLIENT_SECRET?.trim();
-  if (githubId && githubSecret) {
-    providers.push(
-      GitHub({
-        clientId: githubId,
-        clientSecret: githubSecret,
-      }),
-    );
+  for (const id of OAUTH_PROVIDERS) {
+    const fromAgent = sso.providers[id];
+    const creds =
+      fromAgent?.enabled && fromAgent.clientId && fromAgent.clientSecret
+        ? {
+            clientId: fromAgent.clientId,
+            clientSecret: fromAgent.clientSecret,
+          }
+        : envOAuthSettings(id);
+
+    if (!creds) continue;
+
+    if (id === "google") {
+      providers.push(
+        Google({
+          clientId: creds.clientId,
+          clientSecret: creds.clientSecret,
+        }),
+      );
+    } else if (id === "github") {
+      providers.push(
+        GitHub({
+          clientId: creds.clientId,
+          clientSecret: creds.clientSecret,
+        }),
+      );
+    } else {
+      providers.push(
+        LinkedIn({
+          clientId: creds.clientId,
+          clientSecret: creds.clientSecret,
+        }),
+      );
+    }
   }
 
   return providers;
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const { handlers, auth, signIn, signOut } = NextAuth(async () => ({
   ...authConfig,
-  providers: buildProviders(),
+  providers: await buildProviders(),
   callbacks: {
     ...authConfig.callbacks,
     async jwt({ token, user, account, trigger, session }) {
@@ -88,7 +134,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       if (
         account &&
-        (account.provider === "google" || account.provider === "github") &&
+        OAUTH_PROVIDERS.includes(account.provider as OAuthProviderId) &&
         account.providerAccountId
       ) {
         const email =
@@ -99,7 +145,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         const synced = await syncOAuthUserWithAgent({
-          provider: account.provider,
+          provider: account.provider as OAuthProviderId,
           providerId: account.providerAccountId,
           email,
           name: user?.name ?? token.name ?? email.split("@")[0] ?? "User",
@@ -135,4 +181,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-});
+}));

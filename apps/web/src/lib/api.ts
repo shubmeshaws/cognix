@@ -27,6 +27,8 @@ import type {
   UsersListResponse,
   CreateUserResponse,
   ResetPasswordResponse,
+  SsoConfigPatch,
+  SsoConfigResponse,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -383,6 +385,12 @@ export function parseApiErrorMessage(err: unknown): string {
         error?: unknown;
         message?: string;
       };
+      if (
+        typeof parsed.message === "string" &&
+        parsed.message.startsWith("Route ")
+      ) {
+        return `${parsed.message} Restart the Cognix agent (pnpm dev:agent) to load the latest routes.`;
+      }
       const formatted = formatApiErrorBody(parsed.error);
       if (formatted) return formatted;
       if (typeof parsed.message === "string" && parsed.message) {
@@ -481,5 +489,19 @@ export async function deleteUser(
 ): Promise<{ ok: true }> {
   return apiFetch<{ ok: true }>(`/api/users/${userId}`, token, {
     method: "DELETE",
+  });
+}
+
+export async function fetchSsoConfig(token: string): Promise<SsoConfigResponse> {
+  return apiFetch<SsoConfigResponse>("/api/agent/sso-config", token);
+}
+
+export async function updateSsoConfig(
+  token: string,
+  patch: SsoConfigPatch,
+): Promise<SsoConfigResponse> {
+  return apiFetch<SsoConfigResponse>("/api/agent/sso-config", token, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
   });
 }

@@ -1,3 +1,4 @@
+import { AdminSsoPanel } from "@/components/admin/AdminSsoPanel";
 import { AdminUsersPanel } from "@/components/admin/AdminUsersPanel";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
@@ -9,11 +10,9 @@ export default async function AdminPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Manage Cognix users, roles, and temporary passwords.
-      </p>
+    <div className="space-y-8">
       <AdminUsersPanel />
+      <AdminSsoPanel />
     </div>
   );
 }

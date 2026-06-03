@@ -5,14 +5,16 @@ import { Check, Copy } from "lucide-react";
 
 import { LoginForm } from "@/components/auth/LoginForm";
 import { SetupAdminPanel, type GeneratedAdminCreds } from "@/components/auth/SetupAdminPanel";
+import { SsoLoginButtons } from "@/components/auth/SsoLoginButton";
 import { Button } from "@/components/ui/button";
+import type { SsoProviderId } from "@/types/api";
 
 interface LoginPanelProps {
   needsSetup: boolean;
-  googleEnabled: boolean;
-  githubEnabled: boolean;
+  ssoProviders: SsoProviderId[];
   onGoogleSignIn: () => Promise<void>;
   onGithubSignIn: () => Promise<void>;
+  onLinkedinSignIn: () => Promise<void>;
 }
 
 function CopyButton({
@@ -97,13 +99,24 @@ function GeneratedCredsBanner({ creds }: { creds: GeneratedAdminCreds }) {
 
 export function LoginPanel({
   needsSetup: initialNeedsSetup,
-  googleEnabled,
-  githubEnabled,
+  ssoProviders,
   onGoogleSignIn,
   onGithubSignIn,
+  onLinkedinSignIn,
 }: LoginPanelProps) {
   const [needsSetup, setNeedsSetup] = useState(initialNeedsSetup);
   const [generated, setGenerated] = useState<GeneratedAdminCreds | null>(null);
+
+  const signInHandlers: Record<SsoProviderId, () => Promise<void>> = {
+    google: onGoogleSignIn,
+    github: onGithubSignIn,
+    linkedin: onLinkedinSignIn,
+  };
+
+  const visibleProviders = ssoProviders.filter(
+    (id): id is SsoProviderId =>
+      id === "google" || id === "github" || id === "linkedin",
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,29 +138,10 @@ export function LoginPanel({
             initialPassword={generated?.password}
           />
 
-          {(googleEnabled || githubEnabled) && (
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-border" />
-              <span className="text-xs text-muted-foreground">or continue with</span>
-              <div className="h-px flex-1 bg-border" />
-            </div>
-          )}
-
-          {googleEnabled ? (
-            <form action={onGoogleSignIn}>
-              <Button type="submit" variant="outline" className="w-full">
-                Continue with Google
-              </Button>
-            </form>
-          ) : null}
-
-          {githubEnabled ? (
-            <form action={onGithubSignIn}>
-              <Button type="submit" variant="outline" className="w-full">
-                Continue with GitHub
-              </Button>
-            </form>
-          ) : null}
+          <SsoLoginButtons
+            providers={visibleProviders}
+            signInHandlers={signInHandlers}
+          />
         </>
       ) : null}
     </div>

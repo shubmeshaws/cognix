@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Mail, UserCircle, UserPlus, Users } from "lucide-react";
 import { useState } from "react";
 
 import { useAgentToken } from "@/components/auth-context";
@@ -15,6 +16,10 @@ import {
 } from "@/lib/api";
 import { isProtectedOwner } from "@/lib/protected-owner";
 import type { AppUser, AppUserRole } from "@/types/api";
+import { cn } from "@/lib/utils";
+
+const selectClass =
+  "flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 export function AdminUsersPanel() {
   const token = useAgentToken();
@@ -91,182 +96,301 @@ export function AdminUsersPanel() {
     }
   }
 
+  const userCount = usersQuery.data?.users.length ?? 0;
+
   return (
-    <div className="space-y-8">
-      <section className="rounded-lg border bg-card p-6">
-        <h2 className="text-lg font-semibold">Add user</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Creates a user with a random temporary password. They must change it
-          on first login.
+    <section className="rounded-lg border border-border bg-card p-6 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="rounded-md bg-primary/10 p-2 text-primary">
+          <Users className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">User management</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Create accounts, assign roles, and manage access for Cognix users.
+          </p>
+        </div>
+      </div>
+
+      {error ? (
+        <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
         </p>
-        <form
-          className="mt-4 grid gap-3 md:grid-cols-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            createMutation.mutate();
-          }}
-        >
-          <Input
-            placeholder="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <Input
-            placeholder="Full name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-          <Input
-            placeholder="Username (optional)"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <select
-            className="h-9 rounded-md border bg-background px-3 text-sm"
-            value={role}
-            onChange={(e) => setRole(e.target.value as AppUserRole)}
-          >
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
-          </select>
-          <div className="md:col-span-2">
-            <Button type="submit" disabled={createMutation.isPending || !token}>
-              Create user
-            </Button>
+      ) : null}
+
+      <div className="mt-6 space-y-4">
+        <article className="rounded-xl border border-border bg-background p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg border border-border bg-card p-2.5">
+              <UserPlus className="h-5 w-5 text-foreground" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground">Add user</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Creates a user with a random temporary password. They must change
+                it on first login.
+              </p>
+            </div>
           </div>
-        </form>
-        {createdPassword ? (
-          <p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-            Temporary password:{" "}
-            <code className="font-mono font-semibold">{createdPassword}</code>
-          </p>
-        ) : null}
-        {resetPasswordFor ? (
-          <p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-            New temporary password:{" "}
-            <code className="font-mono font-semibold">{resetPasswordFor}</code>
-          </p>
-        ) : null}
-        {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
-      </section>
 
-      <section className="rounded-lg border bg-card p-6">
-        <h2 className="text-lg font-semibold">Users</h2>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead>
-              <tr className="border-b text-muted-foreground">
-                <th className="py-2 pr-4 font-medium">Name</th>
-                <th className="py-2 pr-4 font-medium">Email</th>
-                <th className="py-2 pr-4 font-medium">Username</th>
-                <th className="py-2 pr-4 font-medium">Role</th>
-                <th className="py-2 pr-4 font-medium">Status</th>
-                <th className="py-2 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {usersQuery.data?.users.map((user: AppUser) => {
-                const protectedOwner = isProtectedOwner(user);
+          <form
+            className="mt-5 grid gap-4 border-t border-border pt-5 md:grid-cols-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              createMutation.mutate();
+            }}
+          >
+            <label className="block space-y-2 text-sm">
+              <span className="flex items-center gap-1.5 font-medium text-foreground">
+                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                Email
+              </span>
+              <Input
+                type="email"
+                placeholder="shubmeshaws@gmail.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="h-10 bg-card"
+              />
+            </label>
 
-                return (
-                  <tr key={user.id} className="border-b last:border-0">
-                    <td className="py-3 pr-4">
-                      <div className="flex items-center gap-2">
-                        <span>{user.name}</span>
-                        {protectedOwner ? (
-                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
-                            Primary admin
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="py-3 pr-4">{user.email}</td>
-                    <td className="py-3 pr-4">{user.username ?? "—"}</td>
-                    <td className="py-3 pr-4">
-                      {protectedOwner ? (
-                        <span className="text-xs capitalize">{user.role}</span>
-                      ) : (
-                        <select
-                          className="rounded-md border bg-background px-2 py-1 text-xs"
-                          value={user.role}
-                          onChange={(e) =>
-                            patchMutation.mutate({
-                              id: user.id,
-                              patch: { role: e.target.value as AppUserRole },
-                            })
-                          }
-                        >
-                          <option value="user">User</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      )}
-                    </td>
-                    <td className="py-3 pr-4">
-                      {protectedOwner ? (
-                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-700 dark:text-emerald-300">
-                          Active
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className={`rounded-full px-2 py-0.5 text-xs ${
-                            user.active
-                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                          onClick={() =>
-                            patchMutation.mutate({
-                              id: user.id,
-                              patch: { active: !user.active },
-                            })
-                          }
-                        >
-                          {user.active ? "Active" : "Disabled"}
-                        </button>
-                      )}
-                      {user.mustChangePassword ? (
-                        <span className="ml-2 text-xs text-amber-600">
-                          Must change password
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="py-3">
-                      {protectedOwner ? (
-                        <span className="text-xs text-muted-foreground">
-                          Protected
-                        </span>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => resetMutation.mutate(user.id)}
-                          >
-                            Reset password
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="destructive"
-                            disabled={deleteMutation.isPending}
-                            onClick={() => handleDelete(user)}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      )}
+            <label className="block space-y-2 text-sm">
+              <span className="flex items-center gap-1.5 font-medium text-foreground">
+                <UserCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                Full name
+              </span>
+              <Input
+                placeholder="Shubham Meshram"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="h-10 bg-card"
+              />
+            </label>
+
+            <label className="block space-y-2 text-sm">
+              <span className="flex items-center gap-1.5 font-medium text-foreground">
+                <UserCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                Username
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </span>
+              <Input
+                placeholder="i.am.shubhammeshram"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="h-10 bg-card"
+              />
+            </label>
+
+            <label className="block space-y-2 text-sm">
+              <span className="font-medium text-foreground">Role</span>
+              <select
+                className={selectClass}
+                value={role}
+                onChange={(e) => setRole(e.target.value as AppUserRole)}
+              >
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+
+            {createdPassword ? (
+              <div className="md:col-span-2">
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+                  Temporary password:{" "}
+                  <code className="font-mono font-semibold">{createdPassword}</code>
+                </p>
+              </div>
+            ) : null}
+
+            {resetPasswordFor ? (
+              <div className="md:col-span-2">
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+                  New temporary password:{" "}
+                  <code className="font-mono font-semibold">{resetPasswordFor}</code>
+                </p>
+              </div>
+            ) : null}
+
+            <div className="flex justify-end border-t border-border pt-4 md:col-span-2">
+              <Button type="submit" disabled={createMutation.isPending || !token}>
+                {createMutation.isPending ? "Creating…" : "Create user"}
+              </Button>
+            </div>
+          </form>
+        </article>
+
+        <article className="rounded-xl border border-border bg-background p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg border border-border bg-card p-2.5">
+                <Users className="h-5 w-5 text-foreground" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-foreground">All users</h3>
+                  <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                    {userCount} {userCount === 1 ? "user" : "users"}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  View roles, status, and manage existing accounts.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 overflow-x-auto rounded-lg border border-border bg-card">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30 text-muted-foreground">
+                  <th className="px-4 py-3 font-medium">Name</th>
+                  <th className="px-4 py-3 font-medium">Email</th>
+                  <th className="px-4 py-3 font-medium">Username</th>
+                  <th className="px-4 py-3 font-medium">Role</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usersQuery.isLoading ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-4 py-8 text-center text-muted-foreground"
+                    >
+                      Loading users…
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
+                ) : null}
+
+                {!usersQuery.isLoading && userCount === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-4 py-8 text-center text-muted-foreground"
+                    >
+                      No users yet. Create one above.
+                    </td>
+                  </tr>
+                ) : null}
+
+                {usersQuery.data?.users.map((user: AppUser) => {
+                  const protectedOwner = isProtectedOwner(user);
+
+                  return (
+                    <tr
+                      key={user.id}
+                      className={cn(
+                        "border-b border-border last:border-0",
+                        protectedOwner && "bg-primary/5",
+                      )}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-foreground">
+                            {user.name}
+                          </span>
+                          {protectedOwner ? (
+                            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                              Primary admin
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-foreground">{user.email}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {user.username ?? "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {protectedOwner ? (
+                          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium capitalize text-foreground">
+                            {user.role}
+                          </span>
+                        ) : (
+                          <select
+                            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs shadow-sm"
+                            value={user.role}
+                            onChange={(e) =>
+                              patchMutation.mutate({
+                                id: user.id,
+                                patch: { role: e.target.value as AppUserRole },
+                              })
+                            }
+                          >
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {protectedOwner ? (
+                            <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                              Active
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className={cn(
+                                "rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
+                                user.active
+                                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                  : "bg-muted text-muted-foreground",
+                              )}
+                              onClick={() =>
+                                patchMutation.mutate({
+                                  id: user.id,
+                                  patch: { active: !user.active },
+                                })
+                              }
+                            >
+                              {user.active ? "Active" : "Disabled"}
+                            </button>
+                          )}
+                          {user.mustChangePassword ? (
+                            <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                              Must change password
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {protectedOwner ? (
+                          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                            Protected
+                          </span>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => resetMutation.mutate(user.id)}
+                            >
+                              Reset password
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              disabled={deleteMutation.isPending}
+                              onClick={() => handleDelete(user)}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
   );
 }

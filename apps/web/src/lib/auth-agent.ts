@@ -26,6 +26,48 @@ export async function fetchAuthSetupStatus(): Promise<{ needsSetup: boolean }> {
   return (await res.json()) as { needsSetup: boolean };
 }
 
+export async function fetchSsoPublicConfig(): Promise<{ providers: Array<"google" | "github" | "linkedin"> }> {
+  const res = await fetch(`${API_BASE}/api/auth/sso-public`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    return { providers: [] };
+  }
+  return (await res.json()) as { providers: Array<"google" | "github" | "linkedin"> };
+}
+
+export interface SsoInternalProviderSettings {
+  enabled: boolean;
+  clientId: string;
+  clientSecret: string;
+}
+
+export async function fetchSsoInternalConfig(): Promise<{
+  providers: Partial<
+    Record<"google" | "github" | "linkedin", SsoInternalProviderSettings>
+  >;
+}> {
+  const secret = process.env.JWT_SECRET ?? process.env.NEXTAUTH_SECRET;
+  if (!secret) {
+    return { providers: {} };
+  }
+
+  const res = await fetch(`${API_BASE}/api/auth/sso-internal`, {
+    headers: { "X-Auth-Sync-Secret": secret },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    return { providers: {} };
+  }
+
+  return (await res.json()) as {
+    providers: Partial<
+      Record<"google" | "github" | "linkedin", SsoInternalProviderSettings>
+    >;
+  };
+}
+
 export async function bootstrapAdminWithAgent(): Promise<BootstrapAdminResult> {
   const res = await fetch(`${API_BASE}/api/auth/bootstrap-admin`, {
     method: "POST",
@@ -65,7 +107,7 @@ export async function loginWithAgentCredentials(input: {
 }
 
 export async function syncOAuthUserWithAgent(input: {
-  provider: "google" | "github";
+  provider: "google" | "github" | "linkedin";
   providerId: string;
   email: string;
   name: string;

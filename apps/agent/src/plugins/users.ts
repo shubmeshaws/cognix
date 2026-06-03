@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
+import type { Env } from "../config/env.js";
 import type { Database } from "../db/client.js";
 import { isProtectedOwner } from "../lib/protected-owner.js";
 import { requireAdmin } from "../lib/require-admin.js";
@@ -20,7 +21,11 @@ const updateUserSchema = z.object({
   active: z.boolean().optional(),
 });
 
-export const usersPlugin: FastifyPluginAsync<{ db: Database }> = async (
+const userIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export const usersPlugin: FastifyPluginAsync<{ db: Database; env: Env }> = async (
   app,
   opts,
 ) => {
@@ -54,7 +59,7 @@ export const usersPlugin: FastifyPluginAsync<{ db: Database }> = async (
   });
 
   app.patch("/:id", async (request, reply) => {
-    const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+    const params = userIdParamSchema.safeParse(request.params);
     const body = updateUserSchema.safeParse(request.body);
     if (!params.success || !body.success) {
       return reply.code(400).send({ error: "Invalid update payload" });
@@ -90,7 +95,7 @@ export const usersPlugin: FastifyPluginAsync<{ db: Database }> = async (
   });
 
   app.delete("/:id", async (request, reply) => {
-    const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+    const params = userIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.code(400).send({ error: "Invalid user id" });
     }
@@ -119,7 +124,7 @@ export const usersPlugin: FastifyPluginAsync<{ db: Database }> = async (
   });
 
   app.post("/:id/reset-password", async (request, reply) => {
-    const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+    const params = userIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.code(400).send({ error: "Invalid user id" });
     }

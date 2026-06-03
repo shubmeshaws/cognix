@@ -4,6 +4,11 @@ import { z } from "zod";
 import type { Env } from "../config/env.js";
 import type { Database } from "../db/client.js";
 import { UserService } from "../services/users.js";
+import {
+  assertGoogleEmailAllowed,
+  getSsoInternalResponse,
+  getSsoPublicResponse,
+} from "../services/sso-config.js";
 
 const loginSchema = z.object({
   emailOrUsername: z.string().min(1),
@@ -11,7 +16,7 @@ const loginSchema = z.object({
 });
 
 const oauthSchema = z.object({
-  provider: z.enum(["google", "github"]),
+  provider: z.enum(["google", "github", "linkedin"]),
   providerId: z.string().min(1),
   email: z.string().email(),
   name: z.string().min(1),
@@ -60,6 +65,17 @@ export const authRoutesPlugin: FastifyPluginAsync<{
   app.get("/setup-status", async () => {
     const needsSetup = !(await userService.hasAdmin());
     return { needsSetup };
+  });
+
+  app.get("/sso-public", async () => {
+    return getSsoPublicResponse(opts.env);
+  });
+
+  app.get("/sso-internal", async (request, reply) => {
+    if (!assertSyncSecret(request, opts.env.JWT_SECRET)) {
+      return reply.code(401).send({ error: "Unauthorized sync request" });
+    }
+    return getSsoInternalResponse(opts.env);
   });
 
   app.post("/bootstrap-admin", async (_request, reply) => {
@@ -119,6 +135,10 @@ export const authRoutesPlugin: FastifyPluginAsync<{
     }
 
     try {
+      if (body.data.provider === "google") {
+        assertGoogleEmailAllowed(opts.env, body.data.email);
+      }
+
       const user = await userService.upsertOAuthUser({
         provider: body.data.provider,
         providerId: body.data.providerId,

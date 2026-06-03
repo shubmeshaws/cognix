@@ -27,7 +27,13 @@ import {
   getTeamsConfigResponse,
   testTeamsConnection,
 } from "../services/teams-config.js";
+import {
+  applySsoConfigPatch,
+  getSsoConfigAdminResponse,
+} from "../services/sso-config.js";
 import { getSetupHealth } from "../services/setup-health.js";
+import { requireAdmin } from "../lib/require-admin.js";
+import { UserService } from "../services/users.js";
 
 const llmProviderIdSchema = z.enum(["ollama", "openai", "anthropic", "puter"]);
 
@@ -39,11 +45,26 @@ const llmChainSchema = z
   ])
   .optional();
 
+const ssoProviderPatchSchema = z.object({
+  enabled: z.boolean().optional(),
+  clientId: z.string().optional(),
+  clientSecret: z.string().optional(),
+  allowedDomains: z.string().optional(),
+});
+
+const ssoConfigPatchSchema = z.object({
+  google: ssoProviderPatchSchema.optional(),
+  github: ssoProviderPatchSchema.optional(),
+  linkedin: ssoProviderPatchSchema.optional(),
+});
+
 export const agentStatusPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async (
   app,
   opts,
 ) => {
   app.addHook("onRequest", app.authenticate);
+
+  const userService = new UserService(opts.deps.db);
 
   app.get("/setup-health", async () => {
     return getSetupHealth(opts.deps);
@@ -103,6 +124,30 @@ export const agentStatusPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async
 
   app.get("/llm-config", async () => {
     return getLlmConfigResponse(opts.deps.env);
+  });
+
+  app.get("/sso-config", async (request, reply) => {
+    const ok = await requireAdmin(request, reply, userService);
+    if (!ok) return reply;
+    return getSsoConfigAdminResponse(opts.deps.env);
+  });
+
+  app.patch("/sso-config", async (request, reply) => {
+    const ok = await requireAdmin(request, reply, userService);
+    if (!ok) return reply;
+
+    const body = ssoConfigPatchSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: "Invalid SSO configuration payload" });
+    }
+
+    try {
+      return await applySsoConfigPatch(opts.deps.env, body.data);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to save SSO configuration";
+      return reply.code(400).send({ error: message });
+    }
   });
 
   app.patch("/healing", async (request, reply) => {
