@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "kubehealer.agent.fullname" . }}
+  name: {{ include "cognix.agent.fullname" . }}
   labels:
-    {{- include "kubehealer.labels" . | nindent 4 }}
+    {{- include "cognix.labels" . | nindent 4 }}
     app.kubernetes.io/component: agent
 spec:
   replicas: {{ .Values.agent.replicaCount }}
   selector:
     matchLabels:
-      {{- include "kubehealer.selectorLabels" . | nindent 6 }}
+      {{- include "cognix.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: agent
   template:
     metadata:
       labels:
-        {{- include "kubehealer.selectorLabels" . | nindent 8 }}
+        {{- include "cognix.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: agent
     spec:
-      serviceAccountName: {{ include "kubehealer.serviceAccountName" . }}
+      serviceAccountName: {{ include "cognix.serviceAccountName" . }}
       containers:
         - name: agent
           image: "{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag }}"
@@ -31,12 +31,12 @@ spec:
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "kubehealer.fullname" . }}-secrets
+                  name: {{ include "cognix.fullname" . }}-secrets
                   key: JWT_SECRET
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "kubehealer.fullname" . }}-secrets
+                  name: {{ include "cognix.fullname" . }}-secrets
                   key: DATABASE_URL
             - name: OLLAMA_URL
               value: {{ .Values.agent.env.ollamaUrl | quote }}
@@ -65,7 +65,7 @@ spec:
         - name: data
           {{- if .Values.agent.persistence.enabled }}
           persistentVolumeClaim:
-            claimName: {{ include "kubehealer.agent.fullname" . }}-data
+            claimName: {{ include "cognix.agent.fullname" . }}-data
           {{- else }}
           emptyDir: {}
           {{- end }}

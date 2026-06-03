@@ -1,6 +1,7 @@
 "use client";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { UserMenu } from "@/components/auth/UserMenu";
 import { HealModeControls } from "@/components/dashboard/HealModeControls";
 import { MeshyAIToggle } from "@/components/MeshyAIToggle";
 
@@ -14,6 +15,7 @@ export function Topbar({ title }: { title: string }) {
         <ThemeToggle />
         <MeshyAIToggle />
         <HealModeControls />
+        <UserMenu />
       </div>
     </header>
   );

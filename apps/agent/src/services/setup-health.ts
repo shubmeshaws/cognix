@@ -146,7 +146,7 @@ export async function getSetupHealth(deps: ServerDeps): Promise<SetupHealthRespo
   }
 
   const connected = deps.watcher.activeClusterCount;
-  const registered = deps.clusterHub.connectedClusters().length;
+  const registered = deps.clusterHub.connectedClusters();
   checks.push({
     id: "cluster",
     ok: connected > 0,

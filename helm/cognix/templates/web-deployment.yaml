@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "kubehealer.web.fullname" . }}
+  name: {{ include "cognix.web.fullname" . }}
   labels:
-    {{- include "kubehealer.labels" . | nindent 4 }}
+    {{- include "cognix.labels" . | nindent 4 }}
     app.kubernetes.io/component: web
 spec:
   replicas: {{ .Values.web.replicaCount }}
   selector:
     matchLabels:
-      {{- include "kubehealer.selectorLabels" . | nindent 6 }}
+      {{- include "cognix.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: web
   template:
     metadata:
       labels:
-        {{- include "kubehealer.selectorLabels" . | nindent 8 }}
+        {{- include "cognix.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: web
     spec:
       containers:
@@ -32,12 +32,12 @@ spec:
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "kubehealer.fullname" . }}-secrets
+                  name: {{ include "cognix.fullname" . }}-secrets
                   key: JWT_SECRET
             - name: NEXTAUTH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "kubehealer.fullname" . }}-secrets
+                  name: {{ include "cognix.fullname" . }}-secrets
                   key: NEXTAUTH_SECRET
             - name: NEXT_PUBLIC_API_URL
               value: {{ .Values.web.env.nextPublicApiUrl | quote }}

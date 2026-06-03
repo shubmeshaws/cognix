@@ -1,5 +1,6 @@
 "use client";
 
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CognixLogo } from "@/components/brand/CognixLogo";
@@ -16,6 +17,7 @@ import {
   ShieldCheck,
   Sparkles,
   ListChecks,
+  Users,
 } from "lucide-react";
 
 import { getActiveLlmDisplay } from "@/lib/llm-display";
@@ -47,6 +49,7 @@ const NAV = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
   const activeClusterId = useClusterStore((s) => s.activeClusterId);
   const setCluster = useClusterStore((s) => s.setCluster);
   const pods = useClusterStore((s) => s.pods);
@@ -75,6 +78,13 @@ export function Sidebar() {
   const clusterLabel = activeCluster?.name ?? (activeClusterId ? "Cluster" : "No cluster");
   const clusterLive = activeCluster?.health.ok ?? false;
   const activeLlm = getActiveLlmDisplay(agentQuery.data);
+  const isAdmin = session?.user?.role === "admin";
+  const navItems = isAdmin
+    ? [
+        ...NAV,
+        { href: "/dashboard/admin", label: "Admin", icon: Users },
+      ]
+    : NAV;
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-[200px] flex-col border-r bg-card">
@@ -83,7 +93,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-0.5 px-2 py-3">
-        {NAV.map(({ href, label, icon: Icon, badgeKey }) => {
+        {navItems.map(({ href, label, icon: Icon, badgeKey }) => {
           const active =
             pathname === href ||
             (href === "/dashboard/meshy" && pathname.startsWith("/dashboard/meshy")) ||
@@ -92,7 +102,9 @@ export function Sidebar() {
             (href === "/dashboard/rules" &&
               pathname.startsWith("/dashboard/rules")) ||
             (href === "/dashboard/setup" &&
-              pathname.startsWith("/dashboard/setup"));
+              pathname.startsWith("/dashboard/setup")) ||
+            (href === "/dashboard/admin" &&
+              pathname.startsWith("/dashboard/admin"));
           const count = badgeKey ? badges[badgeKey] : 0;
           return (
             <Link

@@ -13,12 +13,15 @@ import { AgentEventBus } from "./events/bus.js";
 import { HealOrchestrator } from "./healer/orchestrator.js";
 import { agentStatusPlugin } from "./plugins/agent-status.js";
 import { alertsPlugin } from "./plugins/alerts.js";
+import { authRoutesPlugin } from "./plugins/auth-routes.js";
 import { authPlugin } from "./plugins/auth.js";
 import { clustersPlugin } from "./plugins/clusters.js";
 import { healsPlugin } from "./plugins/heals.js";
 import { podsPlugin } from "./plugins/pods.js";
 import { nodesPlugin } from "./plugins/nodes.js";
 import { copilotPlugin } from "./plugins/copilot.js";
+import { setupPlugin } from "./plugins/setup.js";
+import { usersPlugin } from "./plugins/users.js";
 import { runHealPipeline } from "./services/heal-pipeline.js";
 import { ClusterRegistryService } from "./services/clusters.js";
 import { WatcherService } from "./services/watcher.js";
@@ -78,6 +81,23 @@ export async function buildServer(env: Env): Promise<BuildServerResult> {
   await app.register(cors, { origin: true });
   await app.register(websocket);
   await app.register(authPlugin, { env });
+
+  await app.register(setupPlugin, {
+    prefix: "/api/setup",
+    db,
+    pool,
+  });
+
+  await app.register(authRoutesPlugin, {
+    prefix: "/api/auth",
+    env,
+    db,
+  });
+
+  await app.register(usersPlugin, {
+    prefix: "/api/users",
+    db,
+  });
 
   await app.register(clustersPlugin, {
     prefix: "/api/clusters",

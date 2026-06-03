@@ -2,9 +2,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "kubehealer.fullname" . }}
+  name: {{ include "cognix.fullname" . }}
   labels:
-    {{- include "kubehealer.labels" . | nindent 4 }}
+    {{- include "cognix.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -31,7 +31,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "kubehealer.web.fullname" . }}
+                name: {{ include "cognix.web.fullname" . }}
                 port:
                   number: {{ .Values.web.service.port }}
     - host: {{ .Values.ingress.hosts.api | quote }}
@@ -41,7 +41,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "kubehealer.agent.fullname" . }}
+                name: {{ include "cognix.agent.fullname" . }}
                 port:
                   number: {{ .Values.agent.service.port }}
 {{- end }}

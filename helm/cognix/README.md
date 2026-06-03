@@ -1,6 +1,6 @@
-# KubeHealer Helm chart
+# Cognix Helm chart
 
-Install KubeHealer on Kubernetes.
+Install Cognix on Kubernetes.
 
 Full guide: [docs/SETUP.md](../../docs/SETUP.md#3-setup-on-kubernetes-helm)
 
@@ -8,19 +8,19 @@ Full guide: [docs/SETUP.md](../../docs/SETUP.md#3-setup-on-kubernetes-helm)
 
 ```bash
 # 1. Build & push images (from repo root)
-docker build -t YOUR_REGISTRY/kubehealer-agent:latest -f apps/agent/Dockerfile .
-docker build -t YOUR_REGISTRY/kubehealer-web:latest -f apps/web/Dockerfile .
-docker push YOUR_REGISTRY/kubehealer-agent:latest
-docker push YOUR_REGISTRY/kubehealer-web:latest
+docker build -t YOUR_REGISTRY/cognix-agent:latest -f apps/agent/Dockerfile .
+docker build -t YOUR_REGISTRY/cognix-web:latest -f apps/web/Dockerfile .
+docker push YOUR_REGISTRY/cognix-agent:latest
+docker push YOUR_REGISTRY/cognix-web:latest
 
 # 2. Customize values
 cp values.yaml my-values.yaml
 # Edit jwtSecret, image repos, ingress hosts, web.env.nextPublicApiUrl
 
 # 3. Install
-helm upgrade --install kubehealer . \
+helm upgrade --install cognix . \
   -f my-values.yaml \
-  -n kubehealer --create-namespace
+  -n cognix --create-namespace
 ```
 
 ## Required values

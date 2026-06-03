@@ -1,3 +1,4 @@
+import { AuthGate } from "@/components/auth/AuthGate";
 import { DashboardShell } from "@/components/DashboardShell";
 import { LlmConfigBootstrap } from "@/components/settings/LlmConfigBootstrap";
 import { Sidebar } from "@/components/Sidebar";
@@ -11,7 +12,9 @@ export default function DashboardLayout({
     <div className="min-h-screen bg-background">
       <LlmConfigBootstrap />
       <Sidebar />
-      <DashboardShell>{children}</DashboardShell>
+      <DashboardShell>
+        <AuthGate>{children}</AuthGate>
+      </DashboardShell>
     </div>
   );
 }

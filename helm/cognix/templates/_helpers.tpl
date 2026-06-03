@@ -1,11 +1,11 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "kubehealer.name" -}}
+{{- define "cognix.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "kubehealer.fullname" -}}
+{{- define "cognix.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -18,46 +18,46 @@ Expand the name of the chart.
 {{- end }}
 {{- end }}
 
-{{- define "kubehealer.labels" -}}
-helm.sh/chart: {{ include "kubehealer.name" . }}-{{ .Chart.Version | replace "+" "_" }}
-app.kubernetes.io/name: {{ include "kubehealer.name" . }}
+{{- define "cognix.labels" -}}
+helm.sh/chart: {{ include "cognix.name" . }}-{{ .Chart.Version | replace "+" "_" }}
+app.kubernetes.io/name: {{ include "cognix.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{- define "kubehealer.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "kubehealer.name" . }}
+{{- define "cognix.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "cognix.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
-{{- define "kubehealer.agent.fullname" -}}
-{{- printf "%s-agent" (include "kubehealer.fullname" .) }}
+{{- define "cognix.agent.fullname" -}}
+{{- printf "%s-agent" (include "cognix.fullname" .) }}
 {{- end }}
 
-{{- define "kubehealer.web.fullname" -}}
-{{- printf "%s-web" (include "kubehealer.fullname" .) }}
+{{- define "cognix.web.fullname" -}}
+{{- printf "%s-web" (include "cognix.fullname" .) }}
 {{- end }}
 
-{{- define "kubehealer.postgres.fullname" -}}
-{{- printf "%s-postgres" (include "kubehealer.fullname" .) }}
+{{- define "cognix.postgres.fullname" -}}
+{{- printf "%s-postgres" (include "cognix.fullname" .) }}
 {{- end }}
 
-{{- define "kubehealer.databaseUrl" -}}
+{{- define "cognix.databaseUrl" -}}
 {{- if .Values.postgresql.enabled -}}
-postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ include "kubehealer.postgres.fullname" . }}:5432/{{ .Values.postgresql.auth.database }}
+postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ include "cognix.postgres.fullname" . }}:5432/{{ .Values.postgresql.auth.database }}
 {{- else -}}
 {{ required "Set postgresql.enabled=true or provide external DATABASE_URL via agent.extraEnv" .Values.agent.externalDatabaseUrl }}
 {{- end -}}
 {{- end }}
 
-{{- define "kubehealer.nextAuthSecret" -}}
+{{- define "cognix.nextAuthSecret" -}}
 {{- .Values.nextAuthSecret | default .Values.jwtSecret }}
 {{- end }}
 
-{{- define "kubehealer.serviceAccountName" -}}
+{{- define "cognix.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "kubehealer.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "cognix.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}

@@ -1,6 +1,6 @@
-# KubeHealer — complete setup guide
+# Cognix — complete setup guide
 
-This guide walks you through installing KubeHealer from zero. It is written for **beginners** and **operators** alike.
+This guide walks you through installing Cognix from zero. It is written for **beginners** and **operators** alike.
 
 **Choose your path:**
 
@@ -14,7 +14,7 @@ This guide walks you through installing KubeHealer from zero. It is written for 
 
 ## What you are installing
 
-KubeHealer has two main parts:
+Cognix has two main parts:
 
 ```mermaid
 flowchart LR
@@ -46,7 +46,7 @@ After install, open **Setup** in the sidebar to verify each dependency.
 
 ## Environment files — which file, which keys?
 
-KubeHealer uses **four** env files depending on how you run it. **Only edit the files for your chosen method.**
+Cognix uses **four** env files depending on how you run it. **Only edit the files for your chosen method.**
 
 ### Quick reference
 
@@ -79,7 +79,7 @@ Configure these in **Settings** after first login — no env keys needed:
 - Cluster connection → **Clusters** page
 - Heal rules → **Rules** pages
 
-Settings are saved on the agent under `.kubehealer/` (persisted volume in Docker/K8s).
+Settings are saved on the agent host (persisted volume in Docker/K8s when configured).
 
 ---
 
@@ -177,11 +177,11 @@ exit
 # SSH in again
 ```
 
-### Step 4 — Clone KubeHealer
+### Step 4 — Clone Cognix
 
 ```bash
-git clone https://github.com/YOUR_ORG/kubehealer.git
-cd kubehealer
+git clone https://github.com/shubmeshaws/cognix.git
+cd cognix
 ```
 
 Replace the URL with your actual repository remote.
@@ -198,7 +198,7 @@ nano .env
 Set:
 
 ```env
-DATABASE_URL=postgresql://kubehealer:kubehealer@postgres:5432/kubehealer
+DATABASE_URL=postgresql://cognix:cognix@postgres:5432/cognix
 JWT_SECRET=paste-your-openssl-secret-here-min-32-chars
 OLLAMA_URL=http://ollama:11434
 ```
@@ -290,8 +290,8 @@ flowchart TB
 ### Step 1 — Clone and prepare
 
 ```bash
-git clone https://github.com/YOUR_ORG/kubehealer.git
-cd kubehealer
+git clone https://github.com/shubmeshaws/cognix.git
+cd cognix
 chmod +x scripts/ollama-pull.sh
 ```
 
@@ -304,7 +304,7 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-DATABASE_URL=postgresql://kubehealer:kubehealer@postgres:5432/kubehealer
+DATABASE_URL=postgresql://cognix:cognix@postgres:5432/cognix
 JWT_SECRET=your-secret-at-least-32-characters-long
 OLLAMA_URL=http://ollama:11434
 ```
@@ -344,7 +344,7 @@ make dev
 |---------|-----|---------------------|
 | Web dashboard | http://localhost:3000 | See auth settings |
 | Agent API | http://localhost:3001/health | — |
-| PostgreSQL | localhost:**5433** | user/pass/db: `kubehealer` |
+| PostgreSQL | localhost:**5433** | user/pass/db: `cognix` |
 | Ollama | http://localhost:11434 | — |
 
 > Postgres is mapped to host port **5433** (not 5432) to avoid conflicts.
@@ -379,7 +379,7 @@ make logs                       # shortcut for agent logs
 
 ## 3. Setup on Kubernetes (Helm)
 
-Deploy KubeHealer into a cluster using the chart in [`helm/kubehealer`](../helm/kubehealer).
+Deploy Cognix into a cluster using the chart in [`helm/cognix`](../helm/cognix).
 
 ### Prerequisites
 
@@ -393,16 +393,16 @@ Deploy KubeHealer into a cluster using the chart in [`helm/kubehealer`](../helm/
 From the repo root (replace `YOUR_REGISTRY`):
 
 ```bash
-docker build -t YOUR_REGISTRY/kubehealer-agent:latest -f apps/agent/Dockerfile .
-docker build -t YOUR_REGISTRY/kubehealer-web:latest -f apps/web/Dockerfile .
-docker push YOUR_REGISTRY/kubehealer-agent:latest
-docker push YOUR_REGISTRY/kubehealer-web:latest
+docker build -t YOUR_REGISTRY/cognix-agent:latest -f apps/agent/Dockerfile .
+docker build -t YOUR_REGISTRY/cognix-web:latest -f apps/web/Dockerfile .
+docker push YOUR_REGISTRY/cognix-agent:latest
+docker push YOUR_REGISTRY/cognix-web:latest
 ```
 
 ### Step 2 — Create a values file
 
 ```bash
-cp helm/kubehealer/values.yaml helm/kubehealer/my-values.yaml
+cp helm/cognix/values.yaml helm/cognix/my-values.yaml
 ```
 
 Edit `my-values.yaml` — minimum changes:
@@ -412,22 +412,22 @@ jwtSecret: "your-openssl-secret-min-32-chars"
 
 agent:
   image:
-    repository: YOUR_REGISTRY/kubehealer-agent
+    repository: YOUR_REGISTRY/cognix-agent
     tag: latest
 
 web:
   image:
-    repository: YOUR_REGISTRY/kubehealer-web
+    repository: YOUR_REGISTRY/cognix-web
     tag: latest
   env:
-    nextPublicApiUrl: "https://api.kubehealer.example.com"
-    nextAuthUrl: "https://kubehealer.example.com"
+    nextPublicApiUrl: "https://api.cognix.example.com"
+    nextAuthUrl: "https://cognix.example.com"
 
 ingress:
   enabled: true
   hosts:
-    web: kubehealer.example.com
-    api: api.kubehealer.example.com
+    web: cognix.example.com
+    api: api.cognix.example.com
 
 postgresql:
   enabled: true   # set false if you use RDS / external Postgres
@@ -436,16 +436,16 @@ postgresql:
 ### Step 3 — Install with Helm
 
 ```bash
-helm upgrade --install kubehealer ./helm/kubehealer \
-  -f helm/kubehealer/my-values.yaml \
-  -n kubehealer --create-namespace
+helm upgrade --install cognix ./helm/cognix \
+  -f helm/cognix/my-values.yaml \
+  -n cognix --create-namespace
 ```
 
 ### Step 4 — Verify pods
 
 ```bash
-kubectl get pods -n kubehealer
-kubectl get ingress -n kubehealer
+kubectl get pods -n cognix
+kubectl get ingress -n cognix
 ```
 
 Wait until agent and web pods are `Running`.
@@ -454,8 +454,8 @@ Wait until agent and web pods are `Running`.
 
 Point your DNS records to the ingress load balancer:
 
-- `kubehealer.example.com` → web ingress
-- `api.kubehealer.example.com` → agent ingress
+- `cognix.example.com` → web ingress
+- `api.cognix.example.com` → agent ingress
 
 Use [cert-manager](https://cert-manager.io/) or your cloud LB for HTTPS.
 
@@ -478,11 +478,11 @@ Default chart values disable bundled Ollama. Options:
 ### Upgrade / uninstall
 
 ```bash
-helm upgrade kubehealer ./helm/kubehealer -f helm/kubehealer/my-values.yaml -n kubehealer
-helm uninstall kubehealer -n kubehealer
+helm upgrade cognix ./helm/cognix -f helm/cognix/my-values.yaml -n cognix
+helm uninstall cognix -n cognix
 ```
 
-See [`helm/kubehealer/README.md`](../helm/kubehealer/README.md) for all values.
+See [`helm/cognix/README.md`](../helm/cognix/README.md) for all values.
 
 ---
 
@@ -495,7 +495,7 @@ For engineers changing code (not required for Docker/server install).
 **`apps/agent/.env`:**
 
 ```env
-DATABASE_URL=postgresql://kubehealer:kubehealer@localhost:5433/kubehealer
+DATABASE_URL=postgresql://cognix:cognix@localhost:5433/cognix
 JWT_SECRET=change-me-to-a-random-string-at-least-32-chars
 OLLAMA_URL=http://localhost:11434
 ALLOW_LOCAL_KUBECONFIG=true
@@ -513,7 +513,7 @@ JWT_SECRET=change-me-to-a-random-string-at-least-32-chars
 
 ```bash
 pnpm install
-pnpm --filter @kubehealer/shared build
+cd packages/shared && pnpm build
 
 # Terminal 1 — infra only
 docker compose up -d postgres ollama ollama-pull
@@ -528,7 +528,7 @@ pnpm dev:web
 Push DB schema once:
 
 ```bash
-pnpm db:push
+make db:push
 ```
 
 ---

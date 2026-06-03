@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "kubehealer.web.fullname" . }}
+  name: {{ include "cognix.web.fullname" . }}
   labels:
-    {{- include "kubehealer.labels" . | nindent 4 }}
+    {{- include "cognix.labels" . | nindent 4 }}
     app.kubernetes.io/component: web
 spec:
   type: {{ .Values.web.service.type }}
@@ -13,5 +13,5 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "kubehealer.selectorLabels" . | nindent 4 }}
+    {{- include "cognix.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: web

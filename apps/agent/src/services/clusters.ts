@@ -100,7 +100,7 @@ export class ClusterRegistryService {
     const email =
       ownerId === DEV_USER_ID
         ? "dev@local"
-        : `owner-${ownerId.slice(0, 8)}@kubehealer.local`;
+        : `owner-${ownerId.slice(0, 8)}@cognix.local`;
     await this.db
       .insert(users)
       .values({

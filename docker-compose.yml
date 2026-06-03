@@ -5,13 +5,13 @@ services:
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_USER: kubehealer
-      POSTGRES_PASSWORD: kubehealer
-      POSTGRES_DB: kubehealer
+      POSTGRES_USER: cognix
+      POSTGRES_PASSWORD: cognix
+      POSTGRES_DB: cognix
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kubehealer -d kubehealer"]
+      test: ["CMD-SHELL", "pg_isready -U cognix -d cognix"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -65,7 +65,7 @@ services:
       - "3001:3001"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://kubehealer:kubehealer@postgres:5432/kubehealer
+      DATABASE_URL: postgresql://cognix:cognix@postgres:5432/cognix
       OLLAMA_URL: http://ollama:11434
     depends_on:
       postgres:

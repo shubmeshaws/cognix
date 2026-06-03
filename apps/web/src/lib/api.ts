@@ -22,6 +22,11 @@ import type {
   PodSummary,
   RegistrationStatus,
   NodeSummary,
+  AppUser,
+  AppUserRole,
+  UsersListResponse,
+  CreateUserResponse,
+  ResetPasswordResponse,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -422,4 +427,59 @@ export async function fetchLiveTerminal(
     `/api/heals/terminal/live?clusterId=${clusterId}&limit=${limit}`,
     token,
   );
+}
+
+export async function fetchUsers(token: string): Promise<UsersListResponse> {
+  return apiFetch<UsersListResponse>("/api/users", token);
+}
+
+export async function createUser(
+  token: string,
+  body: {
+    email: string;
+    name: string;
+    username?: string;
+    role?: AppUserRole;
+  },
+): Promise<CreateUserResponse> {
+  return apiFetch<CreateUserResponse>("/api/users", token, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateUser(
+  token: string,
+  userId: string,
+  body: {
+    name?: string;
+    username?: string | null;
+    role?: AppUserRole;
+    active?: boolean;
+  },
+): Promise<{ user: AppUser }> {
+  return apiFetch<{ user: AppUser }>(`/api/users/${userId}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function resetUserPassword(
+  token: string,
+  userId: string,
+): Promise<ResetPasswordResponse> {
+  return apiFetch<ResetPasswordResponse>(
+    `/api/users/${userId}/reset-password`,
+    token,
+    { method: "POST" },
+  );
+}
+
+export async function deleteUser(
+  token: string,
+  userId: string,
+): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/api/users/${userId}`, token, {
+    method: "DELETE",
+  });
 }

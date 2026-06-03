@@ -9,6 +9,7 @@ export function getDashboardTitle(pathname: string): string {
   if (pathname.startsWith("/dashboard/clusters")) return "Clusters";
   if (pathname.startsWith("/dashboard/setup")) return "Setup";
   if (pathname.startsWith("/dashboard/rules")) return "Rules";
+  if (pathname.startsWith("/dashboard/admin")) return "Admin";
   if (pathname.startsWith("/dashboard/settings")) return "Settings";
   if (pathname.startsWith("/dashboard/meshy/alerts")) return "Voice alerts";
   if (pathname.startsWith("/dashboard/meshy")) return "Meshy";

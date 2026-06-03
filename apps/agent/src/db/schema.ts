@@ -48,11 +48,23 @@ export const concurrencyModeEnum = pgEnum("concurrency_mode", [
   "sequential",
 ]);
 
+export const userRoleEnum = pgEnum("user_role", ["admin", "user"]);
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
+  username: text("username").unique(),
   name: text("name").notNull(),
+  passwordHash: text("password_hash"),
+  role: userRoleEnum("role").notNull().default("user"),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  oauthProvider: text("oauth_provider"),
+  oauthProviderId: text("oauth_provider_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });

@@ -9,7 +9,15 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       agentToken: string;
+      role?: "admin" | "user";
+      mustChangePassword?: boolean;
     };
+  }
+
+  interface User {
+    agentToken?: string;
+    role?: "admin" | "user";
+    mustChangePassword?: boolean;
   }
 }
 
@@ -18,5 +26,7 @@ declare module "next-auth/jwt" {
     userId?: string;
     agentToken?: string;
     provider?: string;
+    role?: "admin" | "user";
+    mustChangePassword?: boolean;
   }
 }

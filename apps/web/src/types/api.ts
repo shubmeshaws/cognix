@@ -397,3 +397,31 @@ export interface NodeSummary {
   createdAt?: string;
 }
 
+export type AppUserRole = "admin" | "user";
+
+export interface AppUser {
+  id: string;
+  email: string;
+  username: string | null;
+  name: string;
+  role: AppUserRole;
+  mustChangePassword: boolean;
+  active: boolean;
+  hasPassword: boolean;
+  oauthProvider: string | null;
+  createdAt: string;
+}
+
+export interface UsersListResponse {
+  users: AppUser[];
+}
+
+export interface CreateUserResponse {
+  user: AppUser;
+  temporaryPassword: string;
+}
+
+export interface ResetPasswordResponse {
+  temporaryPassword: string;
+}
+

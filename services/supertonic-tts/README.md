@@ -1,6 +1,6 @@
 # Supertonic 3 TTS (local)
 
-On-device text-to-speech for KubeHealer using [Supertone/supertonic-3](https://huggingface.co/Supertone/supertonic-3).
+On-device text-to-speech for Cognix using [Supertone/supertonic-3](https://huggingface.co/Supertone/supertonic-3).
 
 ## Model stack
 

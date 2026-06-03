@@ -5,10 +5,14 @@ declare module "@fastify/jwt" {
     payload: {
       userId: string;
       email?: string;
+      role?: string;
+      mustChangePassword?: boolean;
     };
     user: {
       userId: string;
       email?: string;
+      role?: string;
+      mustChangePassword?: boolean;
     };
   }
 }

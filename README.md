@@ -116,7 +116,7 @@ From the repo root:
 
 ```bash
 pnpm install
-pnpm --filter @kubehealer/shared build
+cd packages/shared && pnpm build
 ```
 
 ### Step 3 — Start PostgreSQL
@@ -140,7 +140,7 @@ Default connection (host port **5433** → container 5432):
 |---------|-------|
 | Host | `localhost` |
 | Port | **5433** |
-| User / password / database | `kubehealer` / `kubehealer` / `kubehealer` |
+| User / password / database | `cognix` / `cognix` / `cognix` |
 
 > Already have Postgres elsewhere? Skip this step and set `DATABASE_URL` in Step 5 to your instance.
 
@@ -179,7 +179,7 @@ cp apps/agent/.env.example apps/agent/.env
 Minimum contents:
 
 ```env
-DATABASE_URL=postgresql://kubehealer:kubehealer@localhost:5433/kubehealer
+DATABASE_URL=postgresql://cognix:cognix@localhost:5433/cognix
 JWT_SECRET=paste-your-openssl-secret-min-32-chars
 OLLAMA_URL=http://localhost:11434
 ALLOW_LOCAL_KUBECONFIG=true
@@ -208,7 +208,7 @@ On **EC2**, replace `localhost` in `NEXT_PUBLIC_API_URL` with your server IP or 
 Creates tables in PostgreSQL (required before the agent starts):
 
 ```bash
-pnpm --filter @kubehealer/agent db:push
+make db:push
 ```
 
 Expected output ends with `[✓] Changes applied`.
@@ -251,7 +251,7 @@ Continue with [post-install UI setup](#post-install-ui-setup-all-methods).
 |---------|-----|
 | Web | http://localhost:3000 |
 | Agent | http://localhost:3001/health |
-| Postgres | `localhost:5433` (user/pass/db: `kubehealer`) |
+| Postgres | `localhost:5433` (user/pass/db: `cognix`) |
 | Ollama | http://localhost:11434 |
 
 **Makefile shortcuts:** `make agent` · `make web` · `make db:push`
@@ -290,7 +290,7 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-DATABASE_URL=postgresql://kubehealer:kubehealer@postgres:5432/kubehealer
+DATABASE_URL=postgresql://cognix:cognix@postgres:5432/cognix
 JWT_SECRET=paste-your-openssl-secret-min-32-chars
 OLLAMA_URL=http://ollama:11434
 ```
@@ -344,7 +344,7 @@ cp apps/agent/.env.example apps/agent/.env
 Edit **`apps/agent/.env`** — only `DATABASE_URL` matters for this step:
 
 ```env
-DATABASE_URL=postgresql://kubehealer:kubehealer@localhost:5433/kubehealer
+DATABASE_URL=postgresql://cognix:cognix@localhost:5433/cognix
 JWT_SECRET=paste-your-openssl-secret-min-32-chars
 OLLAMA_URL=http://localhost:11434
 ```
@@ -356,8 +356,8 @@ Install dependencies once, then push schema:
 ```bash
 corepack enable && corepack prepare pnpm@9.15.0 --activate
 pnpm install
-pnpm --filter @kubehealer/shared build
-pnpm --filter @kubehealer/agent db:push
+cd packages/shared && pnpm build
+make db:push
 ```
 
 Expected: `[✓] Changes applied`.
@@ -389,7 +389,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/
 |---------|-----|-------|
 | Web dashboard | http://localhost:3000 | Main UI |
 | Agent API | http://localhost:3001/health | Backend |
-| PostgreSQL | `localhost:5433` | user/pass/db: `kubehealer` |
+| PostgreSQL | `localhost:5433` | user/pass/db: `cognix` |
 | Ollama | http://localhost:11434 | Local LLM for Meshy |
 
 ### Step 9 — Open the application
@@ -412,7 +412,7 @@ make logs                        # agent logs shortcut
 
 ## Option 3: Kubernetes (Helm)
 
-Deploy Cognix into a Kubernetes cluster using the chart in [`helm/kubehealer`](helm/kubehealer).
+Deploy Cognix into a Kubernetes cluster using the chart in [`helm/cognix`](helm/cognix).
 
 ### Prerequisites (Option 3)
 
@@ -446,10 +446,10 @@ docker push YOUR_REGISTRY/cognix-web:latest
 ### Step 3 — Configure Helm values
 
 ```bash
-cp helm/kubehealer/values.yaml helm/kubehealer/my-values.yaml
+cp helm/cognix/values.yaml helm/cognix/my-values.yaml
 ```
 
-Edit `helm/kubehealer/my-values.yaml` — minimum changes:
+Edit `helm/cognix/my-values.yaml` — minimum changes:
 
 ```yaml
 jwtSecret: "your-openssl-secret-min-32-chars"
@@ -485,8 +485,8 @@ postgresql:
 ### Step 4 — Install the Helm chart
 
 ```bash
-helm upgrade --install cognix ./helm/kubehealer \
-  -f helm/kubehealer/my-values.yaml \
+helm upgrade --install cognix ./helm/cognix \
+  -f helm/cognix/my-values.yaml \
   -n cognix --create-namespace
 ```
 
@@ -516,20 +516,20 @@ Add TLS via [cert-manager](https://cert-manager.io/) or your cloud load balancer
 The chart does not run migrations automatically. From your workstation:
 
 ```bash
-# Terminal 1 — port-forward Postgres (service name: {release}-kubehealer-postgres)
-kubectl port-forward -n cognix svc/cognix-kubehealer-postgres 5433:5432
+# Terminal 1 — port-forward Postgres (release name cognix → service cognix-postgres)
+kubectl port-forward -n cognix svc/cognix-postgres 5433:5432
 ```
 
 ```bash
 # Terminal 2 — schema push (repo root)
 corepack enable && corepack prepare pnpm@9.15.0 --activate
 pnpm install
-pnpm --filter @kubehealer/shared build
-DATABASE_URL=postgresql://kubehealer:kubehealer@localhost:5433/kubehealer \
-  pnpm --filter @kubehealer/agent db:push
+cd packages/shared && pnpm build
+DATABASE_URL=postgresql://cognix:cognix@localhost:5433/cognix \
+  make db:push
 ```
 
-> Default Postgres credentials match `helm/kubehealer/values.yaml` (`kubehealer` / `kubehealer` / `kubehealer`). With release name `cognix`, the service is **`cognix-kubehealer-postgres`**.
+> Default Postgres credentials match `helm/cognix/values.yaml` (user / password / database: `cognix`).
 
 ### Step 8 — Verify deployment
 
@@ -545,11 +545,11 @@ Open your **web ingress URL** and complete [post-install UI setup](#post-install
 ### Option 3 — Upgrade / uninstall
 
 ```bash
-helm upgrade cognix ./helm/kubehealer -f helm/kubehealer/my-values.yaml -n cognix
+helm upgrade cognix ./helm/cognix -f helm/cognix/my-values.yaml -n cognix
 helm uninstall cognix -n cognix
 ```
 
-More detail: [helm/kubehealer/README.md](helm/kubehealer/README.md) · [docs/SETUP.md §3](docs/SETUP.md#3-setup-on-kubernetes-helm)
+More detail: [helm/cognix/README.md](helm/cognix/README.md) · [docs/SETUP.md §3](docs/SETUP.md#3-setup-on-kubernetes-helm)
 
 ---
 
@@ -563,7 +563,101 @@ Complete these in the dashboard after any install path:
 4. **Overview** — confirm pods and metrics appear.
 5. **Meshy** (optional) — ask a test question about your cluster.
 
-Configure in the UI (not `.env`): LLM API keys, Teams webhooks, heal rules. Settings persist under `.kubehealer/` on the agent.
+Configure in the UI (not `.env`): LLM API keys, Teams webhooks, heal rules. Settings persist on the agent host.
+
+---
+
+## Authentication
+
+Cognix supports **email/password login**, optional **Google** and **GitHub SSO**, and an **Admin** area for user management. For local development you can skip login entirely; enable auth for Docker, EC2, or Kubernetes deployments.
+
+### Local dev — skip login (default)
+
+In `apps/web/.env`:
+
+```env
+NEXT_PUBLIC_AUTH_DISABLED=true
+```
+
+The dashboard loads without a login page. **`JWT_SECRET` must still match** between `apps/agent/.env` and `apps/web/.env`.
+
+### Enable login (production or testing auth locally)
+
+1. Remove `NEXT_PUBLIC_AUTH_DISABLED` or set it to `false` in `apps/web/.env`.
+2. Add NextAuth settings (same secret as agent is fine):
+
+```env
+NEXTAUTH_SECRET=same-as-JWT_SECRET-or-another-32-char-secret
+NEXTAUTH_URL=http://localhost:3000
+```
+
+3. Ensure `JWT_SECRET` is **identical** in `apps/agent/.env` and `apps/web/.env`.
+4. Run `make db:push` if you have not since upgrading to a version with auth.
+5. Create the first admin user (see below), then restart agent and web.
+
+On a public server, set `NEXTAUTH_URL` and `NEXT_PUBLIC_APP_URL` to your HTTPS web URL.
+
+### Create the first admin user
+
+On first launch with auth enabled, open the login page — if no admin exists yet, click **Generate admin credentials**. Cognix creates the initial admin with a random password shown once on screen. Sign in with those credentials and set a new password when prompted.
+
+Alternatively, from the CLI after `make db:push`:
+
+```bash
+./scripts/create-admin.sh --email admin@example.com --name "Admin User"
+# Optional: --username admin
+```
+
+The CLI script prints a **random password once**. Save it — the admin **must change it on first login**.
+
+### First login flow
+
+1. Open the web URL → **Sign in** with email (or username) and the generated password.
+2. You are redirected to **Change password** — set a new password before using the dashboard.
+3. Admins see **Admin → Users** in the sidebar to add, disable, or reset other users.
+
+### Google / GitHub SSO (optional)
+
+Add OAuth credentials to `apps/web/.env`. Buttons appear on the login page only when both ID and secret are set.
+
+```env
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+```
+
+**Google Cloud Console** — OAuth 2.0 client (Web application):
+
+- Authorized redirect URI: `https://your-domain/auth/callback/google` (local: `http://localhost:3000/auth/callback/google`)
+
+**GitHub** — Settings → Developer settings → OAuth App:
+
+- Authorization callback URL: `https://your-domain/api/auth/callback/github` (local: `http://localhost:3000/api/auth/callback/github`)
+
+SSO users are synced to the agent on first sign-in. Only admins can invite additional local (password) users from **Admin → Users**.
+
+### Admin user management
+
+Users with role **admin** can:
+
+- List all users
+- Create users (email, name, optional username) — a random password is shown once
+- Enable/disable accounts
+- Reset passwords (user must change password on next login)
+
+Regular users can sign in and use the dashboard but cannot access **Admin → Users**.
+
+### Auth environment summary
+
+| Variable | Where | Purpose |
+|----------|-------|---------|
+| `JWT_SECRET` | Agent + web | Shared signing secret (min 32 chars) |
+| `NEXT_PUBLIC_AUTH_DISABLED` | Web | `true` = skip login (local dev only) |
+| `NEXTAUTH_SECRET` | Web | NextAuth session secret (when auth enabled) |
+| `NEXTAUTH_URL` | Web | Public URL of the web app |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Web | Optional Google SSO |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | Web | Optional GitHub SSO |
 
 ---
 
@@ -613,7 +707,7 @@ More: [docs/SETUP.md — Troubleshooting](docs/SETUP.md#troubleshooting)
 | `apps/web` | Next.js dashboard |
 | `apps/agent` | Fastify agent + cluster watcher |
 | `packages/shared` | Shared types |
-| `helm/kubehealer` | Kubernetes Helm chart |
+| `helm/cognix` | Kubernetes Helm chart |
 | `docs/SETUP.md` | Extended setup guide (EC2 hardening, Helm values, etc.) |
 
 ---
@@ -621,5 +715,5 @@ More: [docs/SETUP.md — Troubleshooting](docs/SETUP.md#troubleshooting)
 ## Links
 
 - [Complete setup guide](docs/SETUP.md)
-- [Helm chart README](helm/kubehealer/README.md)
+- [Helm chart README](helm/cognix/README.md)
 - [Ollama](https://ollama.com/) · [Docker](https://docs.docker.com/get-docker/) · [Helm](https://helm.sh/)

@@ -23,13 +23,18 @@ const AgentTokenContext = createContext<string | undefined>(undefined);
 const ActorIdentityContext = createContext<{
   id?: string;
   email: string;
+  role?: "admin" | "user";
 }>({ email: "unknown" });
 
 export function useAgentToken(): string | undefined {
   return useContext(AgentTokenContext);
 }
 
-export function useActorIdentity(): { id?: string; email: string } {
+export function useActorIdentity(): {
+  id?: string;
+  email: string;
+  role?: "admin" | "user";
+} {
   return useContext(ActorIdentityContext);
 }
 
@@ -62,6 +67,7 @@ function SessionAuthBridge({ children }: { children: ReactNode }) {
   const identity = {
     id: session?.user?.id,
     email: session?.user?.email ?? "unknown",
+    role: session?.user?.role,
   };
 
   return (

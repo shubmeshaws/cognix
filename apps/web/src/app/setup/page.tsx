@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 
+import { SetupWizard } from "@/components/setup/SetupWizard";
 import { auth } from "@/auth";
 import { isAuthDisabled } from "@/lib/auth-disabled";
 import { fetchSetupStatus } from "@/lib/setup-api";
 
-export default async function HomePage() {
+export default async function SetupPage() {
   if (isAuthDisabled()) {
     redirect("/dashboard");
   }
@@ -23,8 +24,8 @@ export default async function HomePage() {
       redirect("/login");
     }
   } catch {
-    // Agent unreachable — show setup wizard
+    // Agent unreachable — still show setup UI
   }
 
-  redirect("/setup");
+  return <SetupWizard />;
 }
