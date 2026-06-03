@@ -4,7 +4,15 @@ import {
   asksMeshyList,
   asksMeshyName,
   formatMeshyItemList,
+  formatSpellNamesChatMarkdown,
   inferMeshyResourceFocus,
+  voiceClusterNameReply,
+  voiceCountReply,
+  voiceEmptyReply,
+  voiceHealthSummary,
+  voiceListOfferLine,
+  voiceNodeCountReply,
+  voiceVersionReply,
 } from "@kubehealer/shared";
 
 import type { ClusterConnection } from "../k8s/connection.js";
@@ -244,6 +252,92 @@ function kubectlBlock(command: string): string {
   return `\n\n\`\`\`bash\n${command}\n\`\`\``;
 }
 
+function tryMultiResourceAnswer(
+  msg: string,
+  ctx: MeshyClusterContext,
+  voiceMode: boolean,
+): string | null {
+  const hasMultiCue =
+    /\b(and|also|plus|,)\b/.test(msg) || /\btoo\s*$/i.test(msg.trim());
+  if (!hasMultiCue) return null;
+
+  const wantsNodes =
+    /\bnodes?\b(?!pool|claim|class)/i.test(msg) &&
+    (/\bhow many\b|\bnumber of\b|\bnode count\b|\bnodes?\s+in\s+(my\s+)?cluster\b/i.test(
+      msg,
+    ) ||
+      /\bcount\b.*\bnodes?\b/i.test(msg));
+  const wantsNodepools = /\bnodepools?\b|\bnode pools?\b/i.test(msg);
+
+  if (wantsNodes && wantsNodepools) {
+    if (voiceMode) {
+      const nodeLine = voiceNodeCountReply(ctx.nodeCount, ctx.readyNodeCount);
+      const poolLine =
+        ctx.nodepoolCount === 0
+          ? "I don't see any node pools on this cluster, Sir."
+          : voiceCountReply("node pools", ctx.nodepoolCount);
+      return `${nodeLine} Also, ${poolLine.charAt(0).toLowerCase()}${poolLine.slice(1)}`;
+    }
+    return `**Nodes:** **${ctx.nodeCount}** — **${ctx.readyNodeCount}** Ready.\n\n**NodePools:** **${ctx.nodepoolCount}** Karpenter NodePools (live API).${kubectlBlock("kubectl get nodepools")}`;
+  }
+
+  return null;
+}
+
+function spellResourceLabel(resource: string): string {
+  switch (resource) {
+    case "nodes":
+      return "Node hostnames";
+    case "pods":
+      return "Pod names";
+    case "namespaces":
+      return "Namespace names";
+    case "deployments":
+      return "Deployment names";
+    case "services":
+      return "Service names";
+    case "nodepools":
+      return "Node pool names";
+    case "nodeclaims":
+      return "Node claim names";
+    default:
+      return "Names";
+  }
+}
+
+function spellResourceNames(resource: string, ctx: MeshyClusterContext): string[] {
+  switch (resource) {
+    case "nodes":
+      return ctx.nodes.map((node) => node.name);
+    case "pods":
+      return ctx.pods.map((pod) => `${pod.namespace}/${pod.name}`);
+    case "namespaces":
+      return ctx.namespaces;
+    case "deployments":
+      return ctx.deployments.map((item) => `${item.namespace}/${item.name}`);
+    case "services":
+      return ctx.services.map((item) => `${item.namespace}/${item.name}`);
+    case "nodepools":
+      return ctx.nodepools.map((item) => item.name);
+    case "nodeclaims":
+      return ctx.nodeclaims.map((item) => item.name);
+    default:
+      return [];
+  }
+}
+
+function tryMeshySpellNamesChatAnswer(
+  resource: string,
+  ctx: MeshyClusterContext,
+): string | null {
+  const names = spellResourceNames(resource, ctx);
+  const label = spellResourceLabel(resource);
+  if (names.length === 0) {
+    return `No ${label.toLowerCase()} found to spell.`;
+  }
+  return formatSpellNamesChatMarkdown(names, label);
+}
+
 export function tryMeshyDirectAnswer(
   message: string,
   ctx: MeshyClusterContext,
@@ -252,38 +346,49 @@ export function tryMeshyDirectAnswer(
 ): string | null {
   const msg = message.toLowerCase().trim();
 
+  const spellMatch = msg.match(
+    /^spell (nodes|pods|deployments|services|namespaces|nodepools|nodeclaims) names$/,
+  );
+  if (spellMatch?.[1]) {
+    if (voiceMode) return null;
+    return tryMeshySpellNamesChatAnswer(spellMatch[1], ctx);
+  }
+
   if (
     /\b(cluster name|name of (the |my )?cluster)\b/i.test(msg) ||
     /\bwhat('s| is) (the |my )?cluster (called|name)\b/i.test(msg)
   ) {
     return voiceMode
-      ? `Your cluster is ${clusterMeta.name}.`
+      ? voiceClusterNameReply(clusterMeta.name)
       : `Your connected cluster is **${clusterMeta.name}**.\n- Kubernetes: \`${ctx.version}\`\n- Context: \`${clusterMeta.contextName}\`\n- API server: \`${clusterMeta.serverUrl}\``;
   }
 
   if (/\b(kubernetes|k8s|cluster)\s+version\b/i.test(msg) || /\bwhat version\b/i.test(msg)) {
     return voiceMode
-      ? `Kubernetes version is ${ctx.version}.`
+      ? voiceVersionReply(ctx.version)
       : `This cluster is running **Kubernetes ${ctx.version}** (from the API server).`;
   }
 
+  const multiResource = tryMultiResourceAnswer(msg, ctx, voiceMode);
+  if (multiResource) return multiResource;
+
   if (/\bhow many nodes\b|\bnode count\b|\bnumber of nodes\b/i.test(msg)) {
     return voiceMode
-      ? `${ctx.nodeCount} nodes, ${ctx.readyNodeCount} ready.`
+      ? voiceNodeCountReply(ctx.nodeCount, ctx.readyNodeCount)
       : `**${ctx.nodeCount}** nodes — **${ctx.readyNodeCount}** Ready, **${ctx.nodeCount - ctx.readyNodeCount}** not Ready (live API).${kubectlBlock("kubectl get nodes")}`;
   }
 
   if (/\b(list|show|get)\s+(the\s+)?nodes\b|\bwhat nodes\b/i.test(msg)) {
     if (ctx.nodes.length === 0) {
-      return voiceMode ? "No nodes returned from the API." : `The Kubernetes API returned no nodes.${kubectlBlock("kubectl get nodes")}`;
+      return voiceMode
+        ? voiceEmptyReply("nodes")
+        : `The Kubernetes API returned no nodes.${kubectlBlock("kubectl get nodes")}`;
     }
     if (voiceMode) {
-      return ctx.nodes
-        .slice(0, 6)
-        .map((n) => `${n.name} ${n.status}`)
-        .join(". ");
+      return voiceListOfferLine("nodes");
     }
     return (
+      `**Nodes in your cluster** (${ctx.nodes.length}):\n\n` +
       ctx.nodes
         .map((n) => `- **${n.name}** — *${n.status}*, roles: ${n.roles.join(", ")}`)
         .join("\n") + kubectlBlock("kubectl get nodes -o wide")
@@ -292,7 +397,7 @@ export function tryMeshyDirectAnswer(
 
   if (/\bhow many namespaces\b|\bnamespace count\b/i.test(msg)) {
     return voiceMode
-      ? `${ctx.namespaces.length} namespaces.`
+      ? voiceCountReply("namespaces", ctx.namespaces.length)
       : `**${ctx.namespaces.length}** namespaces.${kubectlBlock("kubectl get namespaces")}`;
   }
 
@@ -301,37 +406,36 @@ export function tryMeshyDirectAnswer(
   ) {
     if (ctx.namespaces.length === 0) {
       return voiceMode
-        ? "No namespaces found."
+        ? voiceEmptyReply("namespaces")
         : `No namespaces returned from the API.${kubectlBlock("kubectl get namespaces")}`;
     }
     return formatMeshyItemList(ctx.namespaces, {
       voiceMode,
-      title: "Namespaces in your cluster",
+      title: "namespaces",
       kubectl: "kubectl get namespaces",
     });
   }
 
   if (/\bhow many deployments\b|\bdeployment count\b/i.test(msg)) {
     return voiceMode
-      ? `${ctx.deploymentCount} deployments.`
+      ? voiceCountReply("deployments", ctx.deploymentCount)
       : `**${ctx.deploymentCount}** deployments (live API).${kubectlBlock("kubectl get deployments -A")}`;
   }
 
   if (/\bhow many services\b|\bservice count\b/i.test(msg)) {
     return voiceMode
-      ? `${ctx.serviceCount} services.`
+      ? voiceCountReply("services", ctx.serviceCount)
       : `**${ctx.serviceCount}** services (live API).${kubectlBlock("kubectl get services -A")}`;
   }
 
   if (/\bhow many nodepools?\b|\bnodepool count\b|\bnumber of nodepools?\b/i.test(msg)) {
     if (ctx.nodepoolCount === 0) {
       return voiceMode
-        ? "No nodepools found. Karpenter may not be installed."
+        ? "I don't see any Karpenter node pools — it may not be installed on this cluster."
         : `No **NodePools** returned from the API. If you use Karpenter, install the CRD or check RBAC.${kubectlBlock("kubectl get nodepools")}`;
     }
-    const names = ctx.nodepools.slice(0, 10).map((np) => np.name);
     return voiceMode
-      ? `${ctx.nodepoolCount} nodepools: ${names.join(". ")}.`
+      ? voiceListOfferLine("node pools")
       : formatMeshyItemList(
           ctx.nodepools.map((np) => np.name),
           { title: "Karpenter NodePools", kubectl: "kubectl get nodepools" },
@@ -341,11 +445,11 @@ export function tryMeshyDirectAnswer(
   if (/\b(list|show|get)\s+(the\s+)?nodepools?\b/i.test(msg)) {
     if (ctx.nodepoolCount === 0) {
       return voiceMode
-        ? "No nodepools found."
+        ? voiceEmptyReply("node pools")
         : `No **NodePools** found.${kubectlBlock("kubectl get nodepools")}`;
     }
     return voiceMode
-      ? ctx.nodepools.map((np) => np.name).slice(0, 8).join(". ")
+      ? voiceListOfferLine("node pools")
       : ctx.nodepools
           .map((np) => `- **${np.name}**`)
           .join("\n") + kubectlBlock("kubectl get nodepools");
@@ -354,22 +458,22 @@ export function tryMeshyDirectAnswer(
   if (/\bhow many nodeclaims?\b|\bnodeclaim count\b|\bnumber of nodeclaims?\b/i.test(msg)) {
     if (ctx.nodeclaimCount === 0) {
       return voiceMode
-        ? "No nodeclaims found."
+        ? voiceEmptyReply("node claims")
         : `No **NodeClaims** returned from the API.${kubectlBlock("kubectl get nodeclaims")}`;
     }
     return voiceMode
-      ? `${ctx.nodeclaimCount} nodeclaims.`
+      ? voiceCountReply("node claims", ctx.nodeclaimCount)
       : `**${ctx.nodeclaimCount}** Karpenter **NodeClaims** (live API).${kubectlBlock("kubectl get nodeclaims")}`;
   }
 
   if (/\b(list|show|get)\s+(the\s+)?nodeclaims?\b/i.test(msg)) {
     if (ctx.nodeclaimCount === 0) {
       return voiceMode
-        ? "No nodeclaims found."
+        ? voiceEmptyReply("node claims")
         : `No **NodeClaims** found.${kubectlBlock("kubectl get nodeclaims")}`;
     }
     return voiceMode
-      ? ctx.nodeclaims.slice(0, 6).map((nc) => `${nc.name} ${nc.phase ?? ""}`.trim()).join(". ")
+      ? voiceListOfferLine("node claims")
       : ctx.nodeclaims
           .slice(0, 15)
           .map((nc) => `- **${nc.name}**${nc.phase ? ` — *${nc.phase}*` : ""}`)
@@ -382,7 +486,13 @@ export function tryMeshyDirectAnswer(
   ) {
     const phases = formatPhaseBreakdown(ctx.podStats.byPhase);
     return voiceMode
-      ? `${ctx.podStats.total} pods, ${ctx.podStats.unhealthy} unhealthy.`
+      ? voiceCountReply(
+          "pods",
+          ctx.podStats.total,
+          ctx.podStats.unhealthy === 0
+            ? "they all look healthy from what I can see"
+            : `${ctx.podStats.unhealthy} look unhealthy right now`,
+        )
       : `**${ctx.podStats.total}** pods — **${ctx.podStats.healthy}** healthy, **${ctx.podStats.unhealthy}** unhealthy.\n\n*Phases:* ${phases}.${kubectlBlock("kubectl get pods -A")}`;
   }
 
@@ -393,7 +503,13 @@ export function tryMeshyDirectAnswer(
     /\bhow (is|are) (the |my )?cluster\b/i.test(msg)
   ) {
     return voiceMode
-      ? `Cluster ${clusterMeta.name}: ${ctx.nodeCount} nodes, ${ctx.podStats.total} pods, ${ctx.podStats.unhealthy} unhealthy.`
+      ? voiceHealthSummary(
+          clusterMeta.name,
+          ctx.podStats.total,
+          ctx.podStats.unhealthy,
+          ctx.readyNodeCount,
+          ctx.nodeCount,
+        )
       : `**${clusterMeta.name}** status *(live API)*:\n- Kubernetes **${ctx.version}**\n- **${ctx.readyNodeCount}/${ctx.nodeCount}** nodes Ready\n- **${ctx.podStats.total}** pods (${ctx.podStats.healthy} healthy, ${ctx.podStats.unhealthy} unhealthy)\n- **${ctx.deploymentCount}** deployments, **${ctx.serviceCount}** services\n- *Pod phases:* ${formatPhaseBreakdown(ctx.podStats.byPhase)}${kubectlBlock("kubectl get nodes,pods -A --field-selector=status.phase!=Running")}`;
   }
 
@@ -402,12 +518,18 @@ export function tryMeshyDirectAnswer(
     if (focus === "cluster") {
       if (asksMeshyName(message) || msg.split(/\s+/).length <= 2) {
         return voiceMode
-          ? `Your cluster is ${clusterMeta.name}.`
+          ? voiceClusterNameReply(clusterMeta.name)
           : `Your connected cluster is **${clusterMeta.name}**.\n- Kubernetes: \`${ctx.version}\`\n- Context: \`${clusterMeta.contextName}\``;
       }
       if (/\bhealth\b/i.test(msg)) {
         return voiceMode
-          ? `Cluster ${clusterMeta.name}: ${ctx.nodeCount} nodes, ${ctx.podStats.total} pods, ${ctx.podStats.unhealthy} unhealthy.`
+          ? voiceHealthSummary(
+              clusterMeta.name,
+              ctx.podStats.total,
+              ctx.podStats.unhealthy,
+              ctx.readyNodeCount,
+              ctx.nodeCount,
+            )
           : formatClusterHealthSummary(ctx, clusterMeta.name, false);
       }
     }
@@ -415,23 +537,34 @@ export function tryMeshyDirectAnswer(
     if (focus === "nodes") {
       if (asksMeshyCount(message)) {
         return voiceMode
-          ? `${ctx.nodeCount} nodes, ${ctx.readyNodeCount} ready.`
+          ? voiceNodeCountReply(ctx.nodeCount, ctx.readyNodeCount)
           : `**${ctx.nodeCount}** nodes — **${ctx.readyNodeCount}** Ready.${kubectlBlock("kubectl get nodes")}`;
       }
       if (asksMeshyList(message) || msg.split(/\s+/).length <= 2) {
         if (ctx.nodes.length === 0) {
-          return voiceMode ? "No nodes returned from the API." : `No nodes returned.${kubectlBlock("kubectl get nodes")}`;
+          return voiceMode
+            ? voiceEmptyReply("nodes")
+            : `No nodes returned.${kubectlBlock("kubectl get nodes")}`;
         }
         return voiceMode
-          ? ctx.nodes.slice(0, 6).map((n) => `${n.name} ${n.status}`).join(". ")
-          : ctx.nodes.map((n) => `- **${n.name}** — *${n.status}*`).join("\n") + kubectlBlock("kubectl get nodes");
+          ? voiceListOfferLine("nodes")
+          : `**Nodes in your cluster** (${ctx.nodes.length}):\n\n` +
+              ctx.nodes
+                .map((n) => `- **${n.name}** — *${n.status}*`)
+                .join("\n") + kubectlBlock("kubectl get nodes");
       }
     }
 
     if (focus === "pods") {
       if (asksMeshyCount(message)) {
         return voiceMode
-          ? `${ctx.podStats.total} pods, ${ctx.podStats.unhealthy} unhealthy.`
+          ? voiceCountReply(
+              "pods",
+              ctx.podStats.total,
+              ctx.podStats.unhealthy === 0
+                ? "they all look healthy from what I can see"
+                : `${ctx.podStats.unhealthy} look unhealthy right now`,
+            )
           : `**${ctx.podStats.total}** pods — **${ctx.podStats.unhealthy}** unhealthy.${kubectlBlock("kubectl get pods -A")}`;
       }
       if (
@@ -440,14 +573,11 @@ export function tryMeshyDirectAnswer(
       ) {
         if (ctx.pods.length === 0) {
           return voiceMode
-            ? "No pods found in the cluster."
+            ? voiceEmptyReply("pods")
             : `No pods found.${kubectlBlock("kubectl get pods -A")}`;
         }
         if (voiceMode) {
-          return ctx.pods
-            .slice(0, 10)
-            .map((p) => `${p.namespace}/${p.name}`)
-            .join(". ");
+          return voiceListOfferLine("pods");
         }
         return (
           ctx.pods
@@ -460,31 +590,31 @@ export function tryMeshyDirectAnswer(
 
     if (focus === "deployments" && asksMeshyCount(message)) {
       return voiceMode
-        ? `${ctx.deploymentCount} deployments.`
+        ? voiceCountReply("deployments", ctx.deploymentCount)
         : `**${ctx.deploymentCount}** deployments.${kubectlBlock("kubectl get deployments -A")}`;
     }
 
     if (focus === "services" && asksMeshyCount(message)) {
       return voiceMode
-        ? `${ctx.serviceCount} services.`
+        ? voiceCountReply("services", ctx.serviceCount)
         : `**${ctx.serviceCount}** services.${kubectlBlock("kubectl get services -A")}`;
     }
 
     if (focus === "namespaces") {
       if (asksMeshyCount(message)) {
         return voiceMode
-          ? `${ctx.namespaces.length} namespaces.`
+          ? voiceCountReply("namespaces", ctx.namespaces.length)
           : `**${ctx.namespaces.length}** namespaces.${kubectlBlock("kubectl get namespaces")}`;
       }
       if (asksMeshyList(message) || /\b(name|names)\b/i.test(msg)) {
         if (ctx.namespaces.length === 0) {
           return voiceMode
-            ? "No namespaces found."
+            ? voiceEmptyReply("namespaces")
             : `No namespaces found.${kubectlBlock("kubectl get namespaces")}`;
         }
         return formatMeshyItemList(ctx.namespaces, {
           voiceMode,
-          title: "Namespaces in your cluster",
+          title: "namespaces",
           kubectl: "kubectl get namespaces",
         });
       }
@@ -493,25 +623,31 @@ export function tryMeshyDirectAnswer(
     if (focus === "nodepools") {
       if (asksMeshyCount(message)) {
         return voiceMode
-          ? `${ctx.nodepoolCount} nodepools.`
+          ? voiceCountReply("node pools", ctx.nodepoolCount)
           : `**${ctx.nodepoolCount}** nodepools.${kubectlBlock("kubectl get nodepools")}`;
       }
       if (asksMeshyList(message) && ctx.nodepoolCount > 0) {
         return voiceMode
-          ? ctx.nodepools.slice(0, 8).map((np) => np.name).join(". ")
+          ? voiceListOfferLine("node pools")
           : ctx.nodepools.map((np) => `- **${np.name}**`).join("\n");
       }
     }
 
     if (focus === "nodeclaims" && asksMeshyCount(message)) {
       return voiceMode
-        ? `${ctx.nodeclaimCount} nodeclaims.`
+        ? voiceCountReply("node claims", ctx.nodeclaimCount)
         : `**${ctx.nodeclaimCount}** nodeclaims.${kubectlBlock("kubectl get nodeclaims")}`;
     }
 
     if (focus === "health") {
       return voiceMode
-        ? `${clusterMeta.name}: ${ctx.podStats.total} pods, ${ctx.podStats.unhealthy} unhealthy.`
+        ? voiceHealthSummary(
+            clusterMeta.name,
+            ctx.podStats.total,
+            ctx.podStats.unhealthy,
+            ctx.readyNodeCount,
+            ctx.nodeCount,
+          )
         : formatClusterHealthSummary(ctx, clusterMeta.name, false);
     }
   }
@@ -525,6 +661,12 @@ export function formatClusterHealthSummary(
   voiceMode: boolean,
 ): string {
   return voiceMode
-    ? `${clusterName}: ${ctx.podStats.total} pods, ${ctx.podStats.unhealthy} unhealthy, ${ctx.readyNodeCount} of ${ctx.nodeCount} nodes ready.`
+    ? voiceHealthSummary(
+        clusterName,
+        ctx.podStats.total,
+        ctx.podStats.unhealthy,
+        ctx.readyNodeCount,
+        ctx.nodeCount,
+      )
     : `**${clusterName}** — **${ctx.podStats.total}** pods (*${ctx.podStats.healthy}* healthy, *${ctx.podStats.unhealthy}* unhealthy), **${ctx.readyNodeCount}/${ctx.nodeCount}** nodes Ready, Kubernetes **${ctx.version}**.${kubectlBlock("kubectl get nodes,pods -A")}`;
 }

@@ -5,6 +5,11 @@ import {
   type MeshyResourceFocus,
 } from "./meshy-intent.js";
 import { normalizeKubernetesInput } from "./meshy-kubernetes-input.js";
+import {
+  voiceCancelledReply,
+  voiceClarifyList,
+  voiceSureAck,
+} from "./meshy-voice-style.js";
 
 export type MeshyListResource = Exclude<
   MeshyResourceFocus,
@@ -16,7 +21,12 @@ export interface MeshyPendingListAction {
   resource: MeshyListResource;
 }
 
-export type MeshyPendingAction = MeshyPendingListAction;
+export type MeshyPendingAction = MeshyPendingListAction | MeshyPendingSpellOffer;
+
+export interface MeshyPendingSpellOffer {
+  type: "spell-offer";
+  resource: MeshyListResource;
+}
 
 export type MeshyConversationResolution =
   | { kind: "continue"; message: string }
@@ -29,13 +39,16 @@ export interface MeshyHistoryTurn {
 }
 
 const AFFIRMATIVE =
-  /^(yes|yeah|yep|yup|sure|ok|okay|please|correct|right|affirmative|go ahead|do it|absolutely|that'?s right|sounds good|please do)[!.?\s]*$/i;
+  /^(yes|yeah|yep|yup|ya|sure|ok|okay|please|yes please|please yes|yes sir|correct|right|affirmative|go ahead|do it|absolutely|that'?s right|sounds good|please do)(\s+(please|sir))?[!.?\s]*$/i;
 
 const NEGATIVE =
-  /^(no|nope|nah|cancel|stop|never mind|nevermind|not really|don'?t|skip)[!.?\s]*$/i;
+  /^(no|nope|nah|naah|no thanks|no thank you|not required|not needed|no please|cancel|stop|never mind|nevermind|not really|don'?t|skip)(\s+(please|thanks))?[!.?\s]*$/i;
 
 const CLARIFY_PATTERN =
   /do you mean list (nodes|pods|deployments|services|namespaces|nodepools|nodeclaims)/i;
+
+const SPELL_OFFER_PATTERN =
+  /should i spell the list|spell the list for you|do you want me to spell the names/i;
 
 const LIST_CUE =
   /\b(list down|list them|list it|list those|list out|can you list|could you list|please list|show them|show me the|give me the list|write down|display them|list all)\b/i;
@@ -84,7 +97,7 @@ export function isNegativeReply(text: string): boolean {
 
 export function parsePendingClarification(
   assistantContent: string | undefined,
-): MeshyPendingAction | null {
+): MeshyPendingListAction | null {
   if (!assistantContent) return null;
   const match = assistantContent.match(CLARIFY_PATTERN);
   if (!match?.[1]) return null;
@@ -92,20 +105,40 @@ export function parsePendingClarification(
   return { type: "list", resource };
 }
 
+export function parsePendingSpellOffer(
+  assistantContent: string | undefined,
+): MeshyPendingSpellOffer | null {
+  if (!assistantContent) return null;
+  if (!SPELL_OFFER_PATTERN.test(assistantContent)) return null;
+  const focus = inferFocusFromAssistantSummary(assistantContent);
+  if (focus) return { type: "spell-offer", resource: focus };
+  return null;
+}
+
 /** Infer resource focus from a short assistant summary (avoids list noise like the karpenter namespace). */
 function inferFocusFromAssistantSummary(content: string): MeshyListResource | null {
   const head = content.split("\n").slice(0, 4).join(" ").toLowerCase();
 
-  if (
-    /\b\d+\s+namespaces?\b/.test(head) ||
-    /\bnamespace count\b/.test(head) ||
+  if (/\b\d+\s+namespaces?\b/.test(head) || /\bnamespace count\b/.test(head) ||
     /\bnamespaces?\s+in your cluster\b/.test(head) ||
-    /\bhow many namespaces\b/.test(head)
+    /\bhow many namespaces\b/.test(head) ||
+    /\bthese are the namespaces\b/.test(head)
   ) {
     return "namespaces";
   }
-  if (/\b\d+\s+nodes?\b/.test(head) || /\bnode count\b/.test(head)) return "nodes";
-  if (/\b\d+\s+pods?\b/.test(head) || /\bpod count\b/.test(head)) return "pods";
+  if (
+    /\b\d+\s+nodes?\b/.test(head) ||
+    /\bnode count\b/.test(head) ||
+    /\bthese are the nodes\b/.test(head) ||
+    /\bhere are some of the nodes\b/.test(head) ||
+    /\bthese are the nodes list\b/.test(head) ||
+    /\bshould i spell the list\b/.test(head)
+  ) {
+    return "nodes";
+  }
+  if (/\b\d+\s+pods?\b/.test(head) || /\bpod count\b/.test(head) || /\bthese are the pods\b/.test(head)) {
+    return "pods";
+  }
   if (/\b\d+\s+deployments?\b/.test(head)) return "deployments";
   if (/\b\d+\s+services?\b/.test(head)) return "services";
   if (/\b\d+\s+nodepools?\b/.test(head)) return "nodepools";
@@ -137,7 +170,38 @@ export function inferTopicFromHistory(
   return null;
 }
 
+/** Resolve "list them" / polite list phrasing to an explicit list command for direct answers. */
+export function resolveListMessage(
+  message: string,
+  history: MeshyHistoryTurn[],
+): string {
+  const { normalized } = normalizeKubernetesInput(message);
+  const explicitFocus = toListResource(inferMeshyResourceFocus(normalized));
+  if (explicitFocus && /\b(list|show|get)\b/i.test(normalized)) {
+    return `list ${resourceLabel(explicitFocus)}`;
+  }
+  if (
+    isAmbiguousListRequest(normalized) ||
+    /\b(list|show|get)\s+(them|those|it)\b/i.test(normalized)
+  ) {
+    const topic = inferTopicFromHistory(history);
+    if (topic) return `list ${resourceLabel(topic)}`;
+  }
+  return normalized;
+}
+
+export function isDeclineListRequest(message: string): boolean {
+  const { normalized } = normalizeKubernetesInput(message);
+  return (
+    /\b(don'?t|do not|no need to|stop|skip|cancel)\s+(list|listing)\b/i.test(
+      normalized,
+    ) ||
+    /\b(don'?t|do not)\s+list\s+(them|those|it|the\s+list)\b/i.test(normalized)
+  );
+}
+
 export function isAmbiguousListRequest(message: string): boolean {
+  if (isDeclineListRequest(message)) return false;
   const { normalized } = normalizeKubernetesInput(message);
   const lower = normalized.toLowerCase();
 
@@ -164,10 +228,12 @@ export function buildClarificationQuestion(
   if (action.type === "list") {
     const label = resourceLabel(action.resource);
     return voiceMode
-      ? `Do you mean list ${label}? Say yes or no.`
+      ? voiceClarifyList(label)
       : `Do you mean **list ${label}**? Reply **yes** or **no**.`;
   }
-  return voiceMode ? "Could you clarify?" : "Could you clarify what you mean?";
+  return voiceMode
+    ? "Could you say a bit more about what you'd like to know?"
+    : "Could you clarify what you mean?";
 }
 
 export function resolveMeshyConversationTurn(
@@ -177,20 +243,39 @@ export function resolveMeshyConversationTurn(
 ): MeshyConversationResolution {
   const { normalized } = normalizeKubernetesInput(message);
 
+  if (isDeclineListRequest(normalized)) {
+    return {
+      kind: "cancel",
+      message: voiceMode ? voiceSureAck() : "Okay, I won't list them.",
+    };
+  }
+
   const lastAssistant = [...history].reverse().find((h) => h.role === "assistant");
+  const pendingSpell = parsePendingSpellOffer(lastAssistant?.content);
+
+  if (pendingSpell) {
+    if (isNegativeReply(normalized)) {
+      return { kind: "cancel", message: voiceSureAck() };
+    }
+    if (isAffirmativeReply(normalized)) {
+      return {
+        kind: "continue",
+        message: `spell ${pendingSpell.resource} names`,
+      };
+    }
+  }
+
   const pending = parsePendingClarification(lastAssistant?.content);
 
   if (pending) {
-    if (isAffirmativeReply(normalized)) {
-      return { kind: "continue", message: actionToMessage(pending) };
-    }
     if (isNegativeReply(normalized)) {
       return {
         kind: "cancel",
-        message: voiceMode
-          ? "Okay, cancelled. What else can I help with?"
-          : "Okay, cancelled. What else can I help with?",
+        message: voiceMode ? voiceCancelledReply() : "Okay, cancelled. What else can I help with?",
       };
+    }
+    if (isAffirmativeReply(normalized)) {
+      return { kind: "continue", message: actionToMessage(pending) };
     }
   }
 

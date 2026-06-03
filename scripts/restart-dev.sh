@@ -14,6 +14,8 @@ for port in 3000 3001; do
   fi
 done
 
+lsof -tiTCP:7788 -sTCP:LISTEN 2>/dev/null | xargs kill -9 2>/dev/null || true
+
 echo "Clearing stale Next.js cache..."
 rm -rf "$ROOT/apps/web/.next"
 
@@ -34,5 +36,8 @@ echo "  cd $ROOT/apps/agent && pnpm dev"
 echo ""
 echo "  # Web (dashboard :3000)"
 echo "  cd $ROOT/apps/web && pnpm dev   # http://127.0.0.1:3000"
+echo ""
+echo "  # Supertonic TTS for Meshy (:7788)"
+echo "  $ROOT/scripts/start-supertonic-tts.sh"
 echo ""
 echo "Then open: http://localhost:3000/dashboard"

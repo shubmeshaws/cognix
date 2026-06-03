@@ -54,7 +54,7 @@ export function cleanTextForSpeech(text: string): string {
   );
 }
 
-const DEFAULT_MAX_VOICE_CHARS = 700;
+const DEFAULT_MAX_VOICE_CHARS = 900;
 
 /** Plain speech text — full sentences up to maxChars for voice playback. */
 export function summarizeForVoice(

@@ -126,16 +126,33 @@ export async function speakWithBrowserTts(
   });
 }
 
+export async function ensureSupertonicVoice(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  try {
+    const res = await fetch("/api/tts/ensure", { method: "POST" });
+    const data = (await res.json()) as { ok?: boolean; message?: string };
+    return {
+      ok: Boolean(data.ok),
+      message: data.message ?? (data.ok ? "Supertonic ready" : "Supertonic unavailable"),
+    };
+  } catch {
+    return { ok: false, message: "Could not reach TTS service" };
+  }
+}
+
 export async function speakWithHuggingFace(
   text: string,
   token: string,
   onAudio?: (audio: HTMLAudioElement) => void,
+  voiceGender: MeshyVoiceGender = loadMeshyVoiceGender(),
 ): Promise<boolean> {
   try {
     const response = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, token }),
+      body: JSON.stringify({ text, token, voiceGender }),
     });
     if (!response.ok) return false;
 
@@ -145,15 +162,16 @@ export async function speakWithHuggingFace(
     onAudio?.(audio);
 
     await new Promise<void>((resolve) => {
-      audio.onended = () => {
+      const done = () => {
         URL.revokeObjectURL(audioUrl);
         resolve();
       };
-      audio.onerror = () => {
-        URL.revokeObjectURL(audioUrl);
-        resolve();
+      audio.onended = done;
+      audio.onerror = done;
+      audio.onpause = () => {
+        if (!audio.ended) done();
       };
-      void audio.play().catch(() => resolve());
+      void audio.play().catch(done);
     });
     return true;
   } catch {
@@ -161,7 +179,7 @@ export async function speakWithHuggingFace(
   }
 }
 
-/** Hugging Face when enabled; otherwise pinned browser voice. */
+/** Supertonic (local) when server is up; Hugging Face cloud as fallback; else browser voice. */
 export async function speakMeshyText(
   text: string,
   opts: {
@@ -172,8 +190,13 @@ export async function speakMeshyText(
     onAudio?: (audio: HTMLAudioElement) => void;
   },
 ): Promise<void> {
-  if (opts.useHuggingFace && opts.hfToken) {
-    const ok = await speakWithHuggingFace(text, opts.hfToken, opts.onAudio);
+  if (opts.useHuggingFace) {
+    const ok = await speakWithHuggingFace(
+      text,
+      opts.hfToken,
+      opts.onAudio,
+      opts.gender ?? loadMeshyVoiceGender(),
+    );
     if (ok) return;
   }
   await speakWithBrowserTts(text, {

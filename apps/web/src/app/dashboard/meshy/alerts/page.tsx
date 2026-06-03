@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CheckCircle2,
   Mic,
@@ -15,7 +15,7 @@ import {
 import { useMeshy } from "@/stores/meshy";
 import { useClusterStore } from "@/stores/cluster";
 import { cn } from "@/lib/utils";
-import { speakMeshyText } from "@/lib/meshy-tts";
+import { ensureSupertonicVoice, speakMeshyText } from "@/lib/meshy-tts";
 import { Topbar } from "@/components/dashboard/Topbar";
 
 const STATUS_ICON = {
@@ -46,6 +46,43 @@ export default function MeshyPage() {
   } = useMeshy();
   const heals = useClusterStore((s) => s.heals);
   const [isPlayingTest, setIsPlayingTest] = useState(false);
+  const [supertonicStarting, setSupertonicStarting] = useState(false);
+  const [supertonicStatus, setSupertonicStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!useHuggingFace) return;
+    let cancelled = false;
+    setSupertonicStarting(true);
+    void ensureSupertonicVoice().then((result) => {
+      if (cancelled) return;
+      setSupertonicStarting(false);
+      setSupertonicStatus(result.ok ? "Supertonic ready" : result.message);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [useHuggingFace]);
+
+  const handleNeuralVoiceToggle = async () => {
+    if (useHuggingFace) {
+      setUseHuggingFace(false);
+      setSupertonicStatus(null);
+      return;
+    }
+
+    setSupertonicStarting(true);
+    setSupertonicStatus("Starting Supertonic…");
+    const result = await ensureSupertonicVoice();
+    setSupertonicStarting(false);
+
+    if (!result.ok) {
+      setSupertonicStatus(result.message);
+      return;
+    }
+
+    setSupertonicStatus("Supertonic ready");
+    setUseHuggingFace(true);
+  };
 
   const announcedHeals = heals.filter(
     (h) =>
@@ -205,9 +242,10 @@ export default function MeshyPage() {
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-violet-500 shrink-0" />
               <div>
-                <h3 className="text-sm font-semibold">Premium Hugging Face AI Voice</h3>
+                <h3 className="text-sm font-semibold">Neural AI Voice (Supertonic 3)</h3>
                 <p className="text-2xs text-muted-foreground">
-                  Get ultra-realistic, natural voice synthesis using cloud-hosted Meta MMS models
+                  Local on-device TTS — starts automatically when enabled. Hugging
+                  Face token is optional cloud fallback.
                 </p>
               </div>
             </div>
@@ -218,9 +256,10 @@ export default function MeshyPage() {
                 type="button"
                 role="switch"
                 aria-checked={useHuggingFace}
-                onClick={() => setUseHuggingFace(!useHuggingFace)}
+                disabled={supertonicStarting}
+                onClick={() => void handleNeuralVoiceToggle()}
                 className={cn(
-                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-60",
                   useHuggingFace ? "bg-violet-600" : "bg-muted"
                 )}
               >
@@ -234,11 +273,26 @@ export default function MeshyPage() {
             </div>
           </div>
 
+          {(supertonicStarting || supertonicStatus) && (
+            <p
+              className={cn(
+                "text-2xs",
+                supertonicStatus === "Supertonic ready"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : supertonicStarting
+                    ? "text-violet-600 dark:text-violet-400"
+                    : "text-amber-600 dark:text-amber-400",
+              )}
+            >
+              {supertonicStarting ? "Starting Supertonic… (first run may take a minute)" : supertonicStatus}
+            </p>
+          )}
+
           {useHuggingFace && (
             <div className="space-y-3 pt-2 border-t border-dashed">
               <div className="space-y-1.5">
                 <div className="text-xs font-medium text-foreground flex items-center justify-between">
-                  <span>Hugging Face Access Token</span>
+                  <span>Hugging Face token (optional fallback)</span>
                   <a
                     href="https://huggingface.co/settings/tokens"
                     target="_blank"
@@ -263,11 +317,11 @@ export default function MeshyPage() {
                   </p>
                   {hfToken ? (
                     <span className="text-2xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 animate-pulse">
-                      ✓ Auto-saved & Ready!
+                      ✓ Cloud fallback ready
                     </span>
                   ) : (
-                    <span className="text-2xs text-amber-600 dark:text-amber-400 font-medium">
-                      ⚠️ Paste token to activate
+                    <span className="text-2xs text-muted-foreground font-medium">
+                      Optional — only if Supertonic is offline
                     </span>
                   )}
                 </div>

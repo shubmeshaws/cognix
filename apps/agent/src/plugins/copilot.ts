@@ -3,14 +3,19 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import {
   buildMeshyIntentHint,
+  buildMeshyVoiceScript,
+  ensureVoiceListSpellOffer,
+  splitListOfferVoiceScript,
   formatMeshyCommaListReply,
   isExplicitPodListRequest,
   isAffirmativeReply,
   isKubernetesRelated,
   isNegativeReply,
   meshyOffTopicMessage,
+  MESHY_VOICE_SYSTEM_STYLE,
   normalizeKubernetesInput,
   parsePendingClarification,
+  resolveListMessage,
   resolveMeshyConversationTurn,
 } from "@kubehealer/shared";
 
@@ -181,11 +186,11 @@ function parseHeuristicIntent(
   ) {
     intent = "scan-cluster";
   } else if (
-    /\b(list|show|get)\s+(me\s+)?(all\s+)?(the\s+)?(pods|statefulsets?|daemonsets?|deployments?|services?|nodes|namespaces)\b/i.test(msg) ||
-    /\b(list|show|get)\s+(the\s+)?(name|names)\s+of\s+(the\s+)?pods\b/i.test(msg) ||
     msg.includes("show pods") ||
     msg.includes("get pods") ||
     msg.includes("list pods") ||
+    /\b(list|show|get)\s+(me\s+)?(all\s+)?(the\s+)?pods\b/i.test(msg) ||
+    /\b(list|show|get)\s+(the\s+)?(name|names)\s+of\s+(the\s+)?pods\b/i.test(msg) ||
     /\bwhich pods\b/i.test(msg) ||
     /\bwhat pods\b/i.test(msg) ||
     /\bunhealthy pods\b/i.test(msg) ||
@@ -194,6 +199,18 @@ function parseHeuristicIntent(
     /\b(which|what)\s+pods\s+(are\s+)?(unhealthy|failing|down)\b/i.test(msg)
   ) {
     intent = "list-pods";
+  } else if (
+    /\b(list|show|get)\s+(me\s+)?(all\s+)?(the\s+)?(statefulsets?|daemonsets?)\b/i.test(msg)
+  ) {
+    intent = "list-pods";
+  } else if (
+    /\b(list|show|get)\s+(me\s+)?(all\s+)?(the\s+)?(nodes|namespaces|deployments|services|nodepools|nodeclaims)\b/i.test(msg) ||
+    /^list (nodes|namespaces|deployments|services|nodepools|nodeclaims)$/i.test(msg.trim()) ||
+    /^spell (nodes|pods|namespaces|nodepools|nodeclaims|deployments|services) names$/i.test(
+      msg.trim(),
+    )
+  ) {
+    intent = "general-chat";
   } else if (
     msg.includes("diagnose") ||
     msg.includes("troubleshoot") ||
@@ -336,12 +353,14 @@ export const copilotPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async (
       return reply.send({
         message: conversation.question,
         uiCard: null,
+        ...(voiceMode ? { voiceScript: [conversation.question] } : {}),
       });
     }
     if (conversation.kind === "cancel") {
       return reply.send({
         message: conversation.message,
         uiCard: null,
+        ...(voiceMode ? { voiceScript: [conversation.message] } : {}),
       });
     }
 
@@ -350,9 +369,11 @@ export const copilotPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async (
     );
 
     if (!isKubernetesRelated(message, { voiceMode })) {
+      const offTopic = meshyOffTopicMessage(voiceMode);
       return reply.send({
-        message: meshyOffTopicMessage(voiceMode),
+        message: offTopic,
         uiCard: null,
+        ...(voiceMode ? { voiceScript: [offTopic] } : {}),
       });
     }
 
@@ -448,8 +469,14 @@ export const copilotPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async (
         parsedJson.intent === "general-chat" ||
         parsedJson.intent === "cluster-info";
 
+      const listMessage = resolveListMessage(message, history);
+      const answerMessage = listMessage !== message ? listMessage : message;
+      const isSpellNamesRequest = /^spell (nodes|pods|deployments|services|namespaces|nodepools|nodeclaims) names$/i.test(
+        answerMessage,
+      );
+
       const directAnswer = tryMeshyDirectAnswer(
-        message,
+        answerMessage,
         clusterContext,
         {
           name: clusterRow.name,
@@ -460,7 +487,7 @@ export const copilotPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async (
       );
       const chatDirectAnswer = voiceMode
         ? tryMeshyDirectAnswer(
-            message,
+            answerMessage,
             clusterContext,
             {
               name: clusterRow.name,
@@ -468,7 +495,7 @@ export const copilotPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async (
               serverUrl: clusterRow.serverUrl,
             },
             false,
-          ) ?? directAnswer
+          )
         : directAnswer;
 
       if (chatDirectAnswer) {
@@ -476,7 +503,11 @@ export const copilotPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async (
         if (parsedJson.intent === "cluster-info") {
           parsedJson.intent = "general-chat";
         }
-      } else if (configuredChain.length > 0 && parsedJson.intent !== "cluster-info") {
+      } else if (
+        configuredChain.length > 0 &&
+        !isSpellNamesRequest &&
+        parsedJson.intent !== "cluster-info"
+      ) {
         try {
           const historyText = history
             .slice(-8)
@@ -485,18 +516,12 @@ export const copilotPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async (
 
           const systemPrompt = voiceMode
             ? isConversational
-              ? `You are Meshy, the user's friendly Kubernetes assistant, replying for text-to-speech.
-Answer using ONLY facts from the LIVE CLUSTER DATA section. Do not invent resource names or counts.
-The user's words may come from speech-to-text with typos, missing words, or homophones — infer what they meant from the full sentence.
-Answer the user's question directly and specifically.
-Do not lead with pod counts unless they asked about pods, nodes, or cluster health.
-For general Kubernetes concepts, explain clearly using live data when relevant.
-Never say filler like "checking now" or "let me check". Plain English only: no markdown, bullets, asterisks, backticks, emojis, or symbols.
-When listing multiple names, put each name on its own line (one per line), not comma-separated in one sentence.
-Maximum 70 words.`
-              : `You are Meshy, the user's Kubernetes assistant, replying for text-to-speech.
-Reply naturally in plain English only: no markdown, bullets, asterisks, backticks, emojis, or symbols.
-Maximum 25 words. Confirm what you did in a friendly way. Never say "checking now".`
+              ? `${MESHY_VOICE_SYSTEM_STYLE}
+The user's words may come from speech-to-text with typos, missing words, or homophones — infer what they meant from the full sentence and conversation history.
+Answer the user's question directly. Do not lead with pod counts unless they asked about pods, nodes, or cluster health.
+For general Kubernetes concepts, explain clearly using live data when relevant.`
+              : `${MESHY_VOICE_SYSTEM_STYLE}
+Confirm what you did in a friendly, natural way — one or two sentences is enough.`
             : isConversational
               ? `You are Meshy, the user's friendly Kubernetes assistant.
 Answer using ONLY facts from the LIVE CLUSTER DATA section below. Do not invent resource names, counts, or statuses.
@@ -574,7 +599,7 @@ Write a natural, friendly response confirming this action. Never say "checking n
         finalMessage =
           directAnswer ??
           (voiceMode
-            ? `Your cluster is ${clusterRow.name}, Kubernetes ${clusterContext.version}.`
+            ? `You're connected to the ${clusterRow.name} cluster, running Kubernetes ${clusterContext.version}.`
             : `Your connected cluster is **${clusterRow.name}**.\n- Kubernetes: \`${clusterContext.version}\`\n- Context: \`${clusterRow.contextName}\`\n- API server: \`${clusterRow.serverUrl}\``);
       } else if (intent === "cluster-health") {
         finalMessage =
@@ -711,7 +736,7 @@ Write a natural, friendly response confirming this action. Never say "checking n
             };
 
             finalMessage = voiceMode
-              ? `Diagnosed ${target.name}. Root cause: ${diagnosisResult.rootCause}. Recommended: ${diagnosisResult.action}. Approve remediation in the chat.`
+              ? `I looked at ${target.name} in ${target.namespace}. The root cause looks like ${diagnosisResult.rootCause}, and I'd recommend ${diagnosisResult.action}. You can approve the fix right here in chat when you're ready.`
               : `I've diagnosed pod \`${target.name}\` in namespace \`${target.namespace}\`.
 **Root Cause:** ${diagnosisResult.rootCause}
 **Recommended Action:** ${diagnosisResult.action} (Severity: ${diagnosisResult.severity})
@@ -816,6 +841,37 @@ You can approve the self-healing remediation directly below.`;
       return reply.code(200).send({
         message: formatMeshyCommaListReply(finalMessage),
         uiCard,
+        ...(voiceMode
+          ? {
+              voiceChatMessage: formatMeshyCommaListReply(
+                chatDirectAnswer ?? finalMessage,
+              ),
+              voiceScript: splitListOfferVoiceScript(
+                ensureVoiceListSpellOffer(
+                  answerMessage,
+                  history,
+                  buildMeshyVoiceScript({
+                    message: answerMessage,
+                    voiceAnswer: directAnswer ?? parsedJson.response ?? finalMessage,
+                    conversation: { kind: "continue", message: answerMessage },
+                    history,
+                    ctx: {
+                      nodeCount: clusterContext.nodeCount,
+                      readyNodeCount: clusterContext.readyNodeCount,
+                      namespaces: clusterContext.namespaces,
+                      nodes: clusterContext.nodes,
+                      pods: clusterContext.pods,
+                      deploymentCount: clusterContext.deploymentCount,
+                      serviceCount: clusterContext.serviceCount,
+                      nodepools: clusterContext.nodepools,
+                      nodeclaims: clusterContext.nodeclaims,
+                      podStats: clusterContext.podStats,
+                    },
+                  }),
+                ),
+              ),
+            }
+          : {}),
       });
     } catch (err) {
       app.log.error(err, "error in copilot chat api");

@@ -96,10 +96,48 @@ export {
 } from "./heal-rules.js";
 
 export {
+  formatHostnameForSpeech,
+  formatHostnamesForSpeech,
+} from "./meshy-hostname-speech.js";
+
+export {
   formatMeshyCommaListReply,
   formatMeshyItemList,
   type MeshyItemListOptions,
 } from "./meshy-format.js";
+
+export {
+  MESHY_VOICE_SYSTEM_STYLE,
+  naturalJoin,
+  voiceCancelledReply,
+  voiceCheckingAck,
+  voiceClarifyList,
+  voiceClusterNameReply,
+  voiceCountReply,
+  voiceEmptyReply,
+  voiceHealthSummary,
+  hasVoiceSpellOffer,
+  voiceListOfferLine,
+  voiceListReply,
+  voiceListTurnScript,
+  voiceNodeCountReply,
+  voiceOffTopicMessage,
+  splitListOfferVoiceScript,
+  formatSpellNamesChatMarkdown,
+  voiceSpellNamesReply,
+  voiceSpellNamesScript,
+  voiceSpellOffer,
+  voiceSureAck,
+  voiceVersionReply,
+} from "./meshy-voice-style.js";
+
+export {
+  buildMeshyVoiceScript,
+  ensureVoiceListSpellOffer,
+  shouldPlayVoiceCheckingAck,
+  voiceWorkingAck,
+  type MeshyVoiceScriptContext,
+} from "./meshy-voice-turn.js";
 
 export {
   DEVOPS_ABBREVIATIONS,
@@ -128,8 +166,11 @@ export {
   inferTopicFromHistory,
   isAffirmativeReply,
   isAmbiguousListRequest,
+  isDeclineListRequest,
   isNegativeReply,
   parsePendingClarification,
+  parsePendingSpellOffer,
+  resolveListMessage,
   resolveMeshyConversationTurn,
   type MeshyConversationResolution,
   type MeshyHistoryTurn,

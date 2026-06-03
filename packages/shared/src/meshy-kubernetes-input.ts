@@ -235,6 +235,15 @@ function fixNodesSpeechHomophones(
   }
 
   if (clusterCue) {
+    out = replaceAll(out, /\bnudes\b/gi, "nodes", "nudes → nodes", corrections, seen);
+    out = replaceAll(
+      out,
+      /\bnudes\s+in\s+(my\s+)?cluster\b/gi,
+      "nodes in my cluster",
+      "nudes → nodes",
+      corrections,
+      seen,
+    );
     out = replaceAll(
       out,
       /\bnode\s+pulses?\b/gi,
@@ -268,6 +277,132 @@ function fixNodesSpeechHomophones(
       seen,
     );
   }
+
+  return out;
+}
+
+/** STT often hears "don't list them" as "don't listen". */
+function fixDontListenHomophones(
+  text: string,
+  corrections: string[],
+  seen: Set<string>,
+): string {
+  let out = text;
+
+  out = replaceAll(
+    out,
+    /\b(don'?t|do not)\s+listen(?:\s+to)?\s+(them|those|it|the\s+list)\b/gi,
+    (_m, lead: string, tail: string) => `${lead} list ${tail}`,
+    "don't listen → don't list them",
+    corrections,
+    seen,
+  );
+  out = replaceAll(
+    out,
+    /\b(don'?t|do not)\s+listen\b/gi,
+    "$1 list them",
+    "don't listen → don't list them",
+    corrections,
+    seen,
+  );
+
+  return out;
+}
+
+/** STT often hears "please" as "police". */
+function fixVoicePolitenessHomophones(
+  text: string,
+  corrections: string[],
+  seen: Set<string>,
+): string {
+  let out = text;
+
+  out = replaceAll(
+    out,
+    /\bpolice (list|tell|show|get|give|check|let|help|can you|could you)\b/gi,
+    (_m, verb: string) => `please ${verb}`,
+    "police → please",
+    corrections,
+    seen,
+  );
+  out = replaceAll(
+    out,
+    /^\s*police\b[,.]?\s*/i,
+    "please ",
+    "police → please",
+    corrections,
+    seen,
+  );
+  out = replaceAll(out, /\bpolice\b/gi, "please", "police → please", corrections, seen);
+
+  return out;
+}
+
+/** STT often hears "node pools" as "note puls", "not pools", "no pulls", etc. */
+function fixNodePoolSpeechHomophones(
+  text: string,
+  corrections: string[],
+  seen: Set<string>,
+): string {
+  let out = text;
+
+  const clusterCue =
+    hasDevOpsContext(out) ||
+    /\b(list|show|get|how many|count|number of|cluster|kubernetes|kube|meshy|my|karpenter|pool|pools|nodes?|also|too)\b/i.test(
+      out,
+    );
+
+  if (!clusterCue) return out;
+
+  const poolMishearings = [
+    "note puls",
+    "note pools",
+    "note pool",
+    "not pools",
+    "not pool",
+    "not puls",
+    "node puls",
+    "node pulls",
+    "no pulls",
+    "no pull",
+    "know pools",
+    "know pool",
+    "knot pools",
+    "knot pool",
+    "north pools",
+  ] as const;
+
+  for (const phrase of poolMishearings) {
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = replaceAll(
+      out,
+      new RegExp(`\\b${escaped}(?:es)?\\b`, "gi"),
+      "nodepools",
+      `${phrase} → nodepools`,
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      new RegExp(
+        `\\b(list|show|get|how many|count|number of|tell me|please)\\s+(?:the\\s+|about\\s+(?:the\\s+)?)?${escaped}(?:es)?\\b`,
+        "gi",
+      ),
+      (_m, lead: string) => `${lead} nodepools`,
+      `${phrase} → nodepools`,
+      corrections,
+      seen,
+    );
+  }
+
+  out = replaceAll(
+    out,
+    /\b(nodepools|node pools|nodes|pods|namespaces)\s+to\s*$/gi,
+    "$1 too",
+    "to → too",
+    corrections,
+    seen,
+  );
 
   return out;
 }
@@ -571,7 +706,10 @@ export function normalizeKubernetesInput(raw: string): NormalizeKubernetesInputR
   const seen = new Set<string>();
   let text = raw.replace(/\s+/g, " ").trim();
 
+  text = fixVoicePolitenessHomophones(text, corrections, seen);
+  text = fixDontListenHomophones(text, corrections, seen);
   text = fixNotesToNodes(text, corrections, seen);
+  text = fixNodePoolSpeechHomophones(text, corrections, seen);
   text = fixNodesSpeechHomophones(text, corrections, seen);
   text = fixPodsTypos(text, corrections, seen);
   text = stripVoiceLeadInFiller(text, corrections, seen);
@@ -593,9 +731,11 @@ export const MESHY_OFF_TOPIC_MESSAGE =
   "I'm **Meshy**, your Kubernetes and DevOps assistant. Ask about **pods**, **nodes**, **deployments**, **Helm**, **ingress**, **CI/CD**, cluster health, monitoring, or **kubectl** commands.";
 
 export function meshyOffTopicMessage(voiceMode: boolean): string {
-  return voiceMode
-    ? "Please ask a Kubernetes or DevOps question — pods, nodes, deployments, Helm, CI/CD, or cluster health."
-    : MESHY_OFF_TOPIC_MESSAGE;
+  if (voiceMode) {
+    // Lazy import avoided — duplicate short message to keep bundle simple
+    return "I'm best with Kubernetes and DevOps questions — try asking about pods, nodes, deployments, or cluster health.";
+  }
+  return MESHY_OFF_TOPIC_MESSAGE;
 }
 
 export {

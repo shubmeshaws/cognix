@@ -14,6 +14,7 @@ import {
   Box,
   ExternalLink,
   X,
+  Square,
 } from "lucide-react";
 import { AnimatedVoiceAssistantIcon } from "@/components/meshy/AnimatedVoiceAssistantIcon";
 import { MeshyMessageContent } from "@/components/meshy/MeshyMessageContent";
@@ -40,11 +41,18 @@ import {
   meshyOffTopicMessage,
   normalizeKubernetesInput,
   parsePendingClarification,
+  parsePendingSpellOffer,
+  resolveMeshyConversationTurn,
+  ensureVoiceListSpellOffer,
+  isDeclineListRequest,
+  splitListOfferVoiceScript,
+  voiceWorkingAck,
 } from "@kubehealer/shared";
 import type { LlmConfigResponse } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-const MESHY_VOICE_GREETING = "Hello Sir, Meshy here, your assistant.";
+const MESHY_VOICE_GREETING =
+  "Hello Sir, I'm Meshy, your Kubernetes assistant. What would you like to know about your cluster?";
 
 interface Message {
   id: string;
@@ -60,7 +68,11 @@ interface Message {
 interface VoiceTurn {
   user: string;
   userNote?: string;
+  /** Shown in the voice modal. */
   assistant: string;
+  /** Used for yes/no follow-ups (e.g. spell offer) and API history. */
+  assistantContext?: string;
+  uiCard?: Message["uiCard"];
 }
 
 export function MeshyChat() {
@@ -478,8 +490,8 @@ export function MeshyChat() {
     }
   };
 
-  /** Speak the response; VAD paused during playback to avoid echo false-interrupts. */
-  const speakText = async (text: string, turnId: number): Promise<void> => {
+  /** Speak one TTS line without toggling VAD (caller manages pause/unpause). */
+  const speakTextLine = async (text: string, turnId: number): Promise<void> => {
     const spoken = summarizeForVoice(text);
     if (!spoken || turnId !== voiceTurnGenerationRef.current) return;
 
@@ -487,28 +499,45 @@ export function MeshyChat() {
     if (turnId !== voiceTurnGenerationRef.current) return;
 
     const generation = speakGenerationRef.current;
+
+    await speakMeshyText(spoken, {
+      useHuggingFace,
+      hfToken,
+      gender: voiceGender,
+      rate: 0.92,
+      onAudio: (audio) => {
+        if (
+          generation === speakGenerationRef.current &&
+          turnId === voiceTurnGenerationRef.current
+        ) {
+          ttsAudioRef.current = audio;
+        }
+      },
+    });
+  };
+
+  /** Speak one or more lines; VAD stays paused until done or interrupted. */
+  const speakVoiceLines = async (lines: string[], turnId: number): Promise<void> => {
+    if (lines.length === 0 || turnId !== voiceTurnGenerationRef.current) return;
+
     pauseVad();
+    setVoicePhase("responding");
 
     try {
-      await speakMeshyText(spoken, {
-        useHuggingFace,
-        hfToken,
-        gender: voiceGender,
-        rate: 0.92,
-        onAudio: (audio) => {
-          if (
-            generation === speakGenerationRef.current &&
-            turnId === voiceTurnGenerationRef.current
-          ) {
-            ttsAudioRef.current = audio;
-          }
-        },
-      });
+      for (const line of lines) {
+        if (turnId !== voiceTurnGenerationRef.current) break;
+        await speakTextLine(line, turnId);
+      }
     } finally {
       if (turnId === voiceTurnGenerationRef.current) {
         unpauseVad();
       }
     }
+  };
+
+  /** Single utterance with VAD pause (greeting, off-topic). */
+  const speakText = async (text: string, turnId: number): Promise<void> => {
+    await speakVoiceLines([text], turnId);
   };
 
   useEffect(() => () => teardownSpeechRecognition(), []);
@@ -571,11 +600,18 @@ export function MeshyChat() {
     setVoiceProcessing(true);
 
     const { normalized, corrections } = prepareUserInput(transcript);
+    const lastVoiceAssistant =
+      voiceTurns.at(-1)?.assistantContext ?? voiceTurns.at(-1)?.assistant;
     const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-    const pendingClarification = parsePendingClarification(lastAssistant?.content);
-    const isYesNoFollowUp =
-      pendingClarification &&
-      (isAffirmativeReply(normalized) || isNegativeReply(normalized));
+    const pendingContext = lastVoiceAssistant ?? lastAssistant?.content;
+    const pendingClarification = parsePendingClarification(pendingContext);
+    const pendingSpell = parsePendingSpellOffer(pendingContext);
+    const isShortFollowUp =
+      (pendingClarification &&
+        (isAffirmativeReply(normalized) || isNegativeReply(normalized))) ||
+      (pendingSpell &&
+        (isAffirmativeReply(normalized) || isNegativeReply(normalized))) ||
+      isDeclineListRequest(normalized);
 
     const userMsg: Message = {
       id: `user-${Date.now()}`,
@@ -583,8 +619,10 @@ export function MeshyChat() {
       content: normalized,
       inputNote:
         corrections.length > 0
-          ? `Interpreted: ${corrections.join(", ")}`
-          : undefined,
+          ? `Heard: "${transcript.trim()}" · ${corrections.join(", ")}`
+          : transcript.trim() !== normalized
+            ? `Heard: "${transcript.trim()}"`
+            : undefined,
     };
     setMessages((prev) => [...prev, userMsg]);
 
@@ -592,7 +630,7 @@ export function MeshyChat() {
     voiceFetchAbortRef.current = abortController;
 
     try {
-      if (!isKubernetesRelated(normalized, { voiceMode: true }) && !isYesNoFollowUp) {
+      if (!isKubernetesRelated(normalized, { voiceMode: true }) && !isShortFollowUp) {
         const offTopic = meshyOffTopicMessage(true);
         if (turnId !== voiceTurnGenerationRef.current) return;
         setVoiceResponse(offTopic);
@@ -603,8 +641,10 @@ export function MeshyChat() {
             user: normalized,
             userNote:
               corrections.length > 0
-                ? `Interpreted: ${corrections.join(", ")}`
-                : undefined,
+                ? `Heard: "${transcript.trim()}" · ${corrections.join(", ")}`
+                : transcript.trim() !== normalized
+                  ? `Heard: "${transcript.trim()}"`
+                  : undefined,
             assistant: meshyOffTopicMessage(false),
           },
         ]);
@@ -620,14 +660,47 @@ export function MeshyChat() {
         return;
       }
 
+      if (isKubernetesRelated(normalized, { voiceMode: true }) && !isShortFollowUp) {
+        const voiceHistoryForAck = voiceTurns.flatMap((turn) => [
+          { role: "user" as const, content: turn.user },
+          {
+            role: "assistant" as const,
+            content: turn.assistantContext ?? turn.assistant,
+          },
+        ]);
+        setVoicePhase("responding");
+        await speakText(
+          voiceWorkingAck(normalized, {
+            turnIndex: voiceTurns.length,
+            history: voiceHistoryForAck,
+          }),
+          turnId,
+        );
+        if (turnId !== voiceTurnGenerationRef.current) return;
+        setVoicePhase("processing");
+      }
+
       const voiceHistory = voiceTurns.flatMap((turn) => [
         { role: "user" as const, content: turn.user },
-        { role: "assistant" as const, content: turn.assistant },
+        {
+          role: "assistant" as const,
+          content: turn.assistantContext ?? turn.assistant,
+        },
       ]);
       const historyPayload = [
         ...voiceHistory,
         { role: "user" as const, content: normalized },
       ];
+
+      const conversation = resolveMeshyConversationTurn(
+        normalized,
+        voiceHistory,
+        true,
+      );
+      const apiMessage =
+        conversation.kind === "continue"
+          ? normalizeKubernetesInput(conversation.message).normalized
+          : normalized;
 
       const response = await fetch(`${API_BASE}/api/copilot/chat`, {
         method: "POST",
@@ -638,7 +711,7 @@ export function MeshyChat() {
         signal: abortController.signal,
         body: JSON.stringify({
           clusterId: activeClusterId,
-          message: normalized,
+          message: apiMessage,
           rawMessage: transcript.trim(),
           voiceMode: true,
           history: historyPayload,
@@ -658,7 +731,24 @@ export function MeshyChat() {
 
       const data = await response.json();
       if (turnId !== voiceTurnGenerationRef.current) return;
-      const assistantText = data.message || "Done.";
+      const voiceChatText =
+        (typeof data.voiceChatMessage === "string" && data.voiceChatMessage.trim()) ||
+        (data.message && String(data.message).trim()) ||
+        "";
+      const assistantText = voiceChatText || "Done.";
+      let voiceScript: string[] =
+        Array.isArray(data.voiceScript) && data.voiceScript.length > 0
+          ? data.voiceScript
+          : [assistantText];
+      const isSpellNamesRequest = /^spell (nodes|pods|deployments|services|namespaces|nodepools|nodeclaims) names$/i.test(
+        apiMessage,
+      );
+      if (!isSpellNamesRequest) {
+        voiceScript = ensureVoiceListSpellOffer(apiMessage, historyPayload, voiceScript);
+      }
+      voiceScript = splitListOfferVoiceScript(voiceScript);
+      const voiceHistoryText = voiceScript.join(" ");
+      const voiceDisplayText = voiceChatText || voiceHistoryText;
 
       setVoiceTurns((prev) => [
         ...prev,
@@ -666,9 +756,13 @@ export function MeshyChat() {
           user: normalized,
           userNote:
             corrections.length > 0
-              ? `Interpreted: ${corrections.join(", ")}`
-              : undefined,
-          assistant: assistantText,
+              ? `Heard: "${transcript.trim()}" · ${corrections.join(", ")}`
+              : transcript.trim() !== normalized
+                ? `Heard: "${transcript.trim()}"`
+                : undefined,
+          assistant: voiceDisplayText,
+          assistantContext: voiceHistoryText,
+          uiCard: data.uiCard ?? undefined,
         },
       ]);
 
@@ -684,10 +778,10 @@ export function MeshyChat() {
       ]);
 
       // Show response in voice modal
-      setVoiceResponse(assistantText);
-      setVoicePhase("responding");
+      setVoiceResponse(voiceDisplayText);
+      setVoiceProcessing(false);
 
-      await speakText(assistantText, turnId);
+      await speakVoiceLines(voiceScript, turnId);
     } catch (error: any) {
       if (error?.name === "AbortError") return;
       if (turnId !== voiceTurnGenerationRef.current) return;
@@ -719,11 +813,24 @@ export function MeshyChat() {
     voiceAutoSubmitRef.current = handleVoiceAutoSubmit;
   });
 
-  /** Tap mic to skip Meshy speech and listen again. */
-  const handleVoiceMicPress = () => {
+  /** Stop Meshy speech or in-flight request and listen for the next question. */
+  const handleVoiceStop = () => {
     beginVoiceTurn();
     resumeListening();
   };
+
+  /** Tap mic while listening to start a fresh capture. */
+  const handleVoiceMicPress = () => {
+    if (voicePhase === "responding" || voicePhase === "processing") {
+      handleVoiceStop();
+      return;
+    }
+    beginVoiceTurn();
+    resumeListening();
+  };
+
+  const meshyVoiceBusy =
+    voicePhase === "processing" || voicePhase === "responding";
 
   const sendMessage = async (textToSend: string) => {
     if (!textToSend.trim() || !activeClusterId || !token || loading) return;
@@ -1079,15 +1186,22 @@ export function MeshyChat() {
                 onClick={handleVoiceMicPress}
                 className={cn(
                   "relative z-10 flex h-20 w-20 items-center justify-center rounded-full border shadow-2xl transition-all duration-300 disabled:opacity-50",
-                  voicePhase === "speaking"
+                  meshyVoiceBusy
                     ? "border-red-500/40 bg-red-600/20 text-red-400 scale-110 shadow-[0_0_30px_rgba(239,68,68,0.35)]"
-                    : voicePhase === "processing"
-                      ? "border-amber-500/40 bg-amber-600/10 text-amber-400"
+                    : voicePhase === "speaking"
+                      ? "border-red-500/40 bg-red-600/20 text-red-400 scale-110 shadow-[0_0_30px_rgba(239,68,68,0.35)]"
                       : "border-violet-500/40 bg-violet-600/10 text-violet-400 hover:bg-violet-600/20 hover:scale-105",
                 )}
+                title={
+                  meshyVoiceBusy
+                    ? "Stop Meshy and ask your next question"
+                    : "Tap to reset listening"
+                }
               >
                 {voicePhase === "processing" ? (
                   <Loader2 className="h-8 w-8 animate-spin" />
+                ) : meshyVoiceBusy ? (
+                  <Square className="h-7 w-7 fill-current" />
                 ) : (
                   <AnimatedVoiceAssistantIcon
                     size={56}
@@ -1097,6 +1211,17 @@ export function MeshyChat() {
                 )}
               </button>
             </div>
+
+            {meshyVoiceBusy && (
+              <button
+                type="button"
+                onClick={handleVoiceStop}
+                className="mb-3 inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-600/15 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-600/25 transition-colors"
+              >
+                <Square className="h-4 w-4 fill-current" />
+                Stop
+              </button>
+            )}
 
             <div className="mb-3 flex h-1.5 w-48 overflow-hidden rounded-full bg-white/10">
               <div
@@ -1114,9 +1239,9 @@ export function MeshyChat() {
               {voicePhase === "speaking" &&
                 "Listening… keep going. Pause for 3 seconds when you're done."}
               {voicePhase === "processing" &&
-                "Thinking… speak anytime and I'll stop to listen."}
+                "Thinking… tap Stop to interrupt and ask something else."}
               {voicePhase === "responding" &&
-                "Speaking… tap the mic when you want to ask another question."}
+                "Speaking… tap Stop when you want to ask your next question."}
             </p>
           </div>
 
@@ -1153,6 +1278,44 @@ export function MeshyChat() {
                           variant="assistant"
                           className="text-sm text-white/90 [&_strong]:text-violet-200 [&_code]:text-emerald-200"
                         />
+                        {turn.uiCard && (
+                          <div className="mt-3 transition-all duration-300 animate-in fade-in slide-in-from-bottom-3">
+                            {turn.uiCard.type === "pod-list" && (
+                              <PodListCard
+                                pods={turn.uiCard.data.pods}
+                                onDiagnose={(podName, ns) =>
+                                  handleQuickSuggestion(
+                                    `Diagnose pod ${podName} in namespace ${ns}`,
+                                  )
+                                }
+                                onRestart={(podName, ns) =>
+                                  handleQuickSuggestion(
+                                    `Restart pod ${podName} in namespace ${ns}`,
+                                  )
+                                }
+                              />
+                            )}
+                            {turn.uiCard.type === "diagnosis" && (
+                              <DiagnosisCard
+                                data={turn.uiCard.data}
+                                loading={actionLoading[turn.uiCard.data.healRecordId]}
+                                done={actionDone[turn.uiCard.data.healRecordId]}
+                                onApprove={() =>
+                                  handleApproveHealAction(
+                                    turn.uiCard!.data.healRecordId,
+                                    turn.uiCard!.data.podName,
+                                  )
+                                }
+                              />
+                            )}
+                            {turn.uiCard.type === "action-result" && (
+                              <ActionResultCard data={turn.uiCard.data} />
+                            )}
+                            {turn.uiCard.type === "heal-trigger" && (
+                              <HealTriggerCard data={turn.uiCard.data} />
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

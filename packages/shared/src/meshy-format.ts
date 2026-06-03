@@ -1,5 +1,7 @@
 /** Format multi-value Meshy replies for readable line-by-line display. */
 
+import { voiceListOfferLine } from "./meshy-voice-style.js";
+
 function looksLikeResourceName(value: string): boolean {
   return /^[a-z0-9][a-z0-9._-]*$/i.test(value);
 }
@@ -53,10 +55,7 @@ export function formatMeshyItemList(
     : "";
 
   if (options.voiceMode) {
-    const spoken = shown.join(". ");
-    const suffix =
-      items.length > limit ? `. And ${items.length - limit} more.` : ".";
-    return `${options.title}: ${spoken}${suffix}`;
+    return voiceListOfferLine(options.title.toLowerCase());
   }
 
   const bullets = shown.map((item) => `- \`${item}\``).join("\n");
