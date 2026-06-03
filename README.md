@@ -1,18 +1,20 @@
-# KubeHealer
+<p align="center">
+  <img src="apps/web/public/brand/cognix-mark.svg" alt="Cognix logo" width="96" height="96" />
+</p>
 
-AI-assisted Kubernetes pod healing — watch unhealthy pods, diagnose with LLM, and heal automatically from a friendly dashboard with **Meshy** (AI copilot).
+<h1 align="center">Cognix - Kubernetes Healing Agent</h1>
 
-📖 **[Full setup guide (EC2, Docker, Kubernetes)](docs/SETUP.md)** — step-by-step for beginners, env file reference, copy-paste commands.
+<p align="center">
+  AI-assisted Kubernetes pod healing — watch unhealthy pods, diagnose with LLM, and heal automatically from a friendly dashboard with <strong>Meshy</strong> (AI copilot).
+</p>
 
-## What it looks like
+<p align="center">
+  📖 <a href="docs/SETUP.md"><strong>Full setup guide</strong></a> (EC2, Docker, Kubernetes) — step-by-step for beginners, env file reference, copy-paste commands
+</p>
 
-Add screenshots or GIFs under [`docs/assets/`](docs/assets/) (see [docs/assets/README.md](docs/assets/README.md)):
+## Application
 
-| Dashboard | Meshy AI | Setup checks |
-|-----------|----------|--------------|
-| ![Overview](docs/assets/dashboard-overview.png) | ![Meshy](docs/assets/meshy-chat.gif) | ![Setup](docs/assets/setup-healthchecks.png) |
-
-*(Images appear once you add files — placeholders until then.)*
+![Cognix dashboard homepage](docs/assets/homepage.png)
 
 ## Quick start (Docker)
 
