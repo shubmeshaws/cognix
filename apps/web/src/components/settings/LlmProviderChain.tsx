@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DEFAULT_ANTHROPIC_MODEL,
@@ -189,7 +189,7 @@ function ProviderConfigFields({
   );
 }
 
-export function LlmProviderChain() {
+export function LlmProviderChain({ embedded = false }: { embedded?: boolean }) {
   const token = useAgentToken();
   const queryClient = useQueryClient();
   const llmChain = useSettingsStore((s) => s.llmChain);
@@ -207,6 +207,7 @@ export function LlmProviderChain() {
     ok: boolean;
     text: string;
   } | null>(null);
+  const agentChainMergedRef = useRef(false);
 
   const configQuery = useQuery({
     queryKey: ["llm-config"],
@@ -216,7 +217,8 @@ export function LlmProviderChain() {
   });
 
   useEffect(() => {
-    if (!configQuery.data) return;
+    if (!configQuery.data || agentChainMergedRef.current) return;
+    agentChainMergedRef.current = true;
     mergeFromAgent({
       llmChain: configQuery.data.llmChain,
       ollamaUrl: configQuery.data.ollamaUrl,
@@ -294,7 +296,7 @@ export function LlmProviderChain() {
       return updateLlmConfig(token, buildApplyBody());
     },
     onSuccess: (data) => {
-      setApplyMsg({ ok: true, text: "Applied to agent." });
+      setApplyMsg({ ok: true, text: "Updated agent configuration." });
       mergeFromAgent({
         llmChain: data.llmChain,
         openaiApiKeySet: data.openaiApiKeySet,
@@ -373,12 +375,28 @@ export function LlmProviderChain() {
     setExpanded(provider);
   };
 
+  const handleRemove = (provider: LlmProviderId) => {
+    removeProviderFromChain(provider);
+    if (expanded === provider) setExpanded(null);
+    if (!token) {
+      setApplyMsg({
+        ok: false,
+        text: "Removed locally. Sign in and Apply to agent to sync.",
+      });
+      return;
+    }
+    setApplyMsg(null);
+    applyMutation.mutate();
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-1.5">
-        <h3 className="text-sm font-semibold">LLM provider chain</h3>
-        <InfoTooltip content="Order matters: the agent tries Primary first, then 1st fallback, then 2nd fallback. Configure each provider below, test the key, then Apply to agent." />
-      </div>
+    <div className={embedded ? "space-y-4" : "space-y-4"}>
+      {!embedded && (
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-sm font-semibold">LLM provider chain</h3>
+          <InfoTooltip content="Order matters: the agent tries Primary first, then 1st fallback, then 2nd fallback. Configure each provider below, test the key, then Apply to agent." />
+        </div>
+      )}
 
       {configQuery.isError && (
         <p className="text-sm text-red-600">
@@ -419,10 +437,7 @@ export function LlmProviderChain() {
                     variant="ghost"
                     size="icon"
                     className="shrink-0 text-muted-foreground hover:text-red-600"
-                    onClick={() => {
-                      removeProviderFromChain(provider);
-                      if (expanded === provider) setExpanded(null);
-                    }}
+                    onClick={() => handleRemove(provider)}
                     aria-label={`Remove ${meta.label}`}
                   >
                     <Trash2 className="h-4 w-4" />

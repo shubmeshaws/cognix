@@ -6,6 +6,7 @@ export {
   LLM_CHAIN_SLOT_LABELS,
   LLM_PROVIDER_CATALOG,
   normalizeLlmChain,
+  compactLlmChain,
   type LlmChainSlotLabel,
   type LlmProviderChain,
   type LlmProviderId,

@@ -84,7 +84,9 @@ export function Sidebar() {
         {NAV.map(({ href, label, icon: Icon, badgeKey }) => {
           const active =
             pathname === href ||
-            (href === "/dashboard/meshy" && pathname.startsWith("/dashboard/meshy"));
+            (href === "/dashboard/meshy" && pathname.startsWith("/dashboard/meshy")) ||
+            (href === "/dashboard/settings" &&
+              pathname.startsWith("/dashboard/settings"));
           const count = badgeKey ? badges[badgeKey] : 0;
           return (
             <Link

@@ -34,6 +34,12 @@ import {
 } from "@/lib/meshy-speech-recognition";
 import { VoiceActivityMonitor } from "@/lib/voice-vad";
 import { useMeshy } from "@/stores/meshy";
+import { useSettingsStore } from "@/stores/settings";
+import {
+  loadMeshyChatMessages,
+  saveMeshyChatMessages,
+  type StoredMeshyMessage,
+} from "@/lib/meshy-chat-storage";
 import {
   isAffirmativeReply,
   isKubernetesRelated,
@@ -75,19 +81,22 @@ interface VoiceTurn {
   uiCard?: Message["uiCard"];
 }
 
+const MESHY_WELCOME_MESSAGE: Message = {
+  id: "welcome",
+  role: "assistant",
+  content:
+    "Hello Sir! I'm **Meshy**, your Kubernetes assistant. Ask me anything about your cluster — health, pod issues, diagnostics, or general questions.",
+};
+
 export function MeshyChat() {
   const activeClusterId = useClusterStore((s) => s.activeClusterId);
   const token = useAgentToken();
   const { hfToken, useHuggingFace, voiceGender } = useMeshy();
+  const meshyChatRetention = useSettingsStore((s) => s.meshyChatRetention);
+  const hydrateSettings = useSettingsStore((s) => s.hydrate);
+  const settingsHydrated = useSettingsStore((s) => s.hydrated);
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content:
-        "Hello Sir! I'm **Meshy**, your Kubernetes assistant. Ask me anything about your cluster — health, pod issues, diagnostics, or general questions.",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([MESHY_WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [llmConfig, setLlmConfig] = useState<LlmConfigResponse | null>(null);
@@ -142,8 +151,42 @@ export function MeshyChat() {
   };
 
   useEffect(() => {
+    if (!settingsHydrated) hydrateSettings();
+  }, [settingsHydrated, hydrateSettings]);
+
+  useEffect(() => {
     scrollToBottom();
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!activeClusterId) {
+      setMessages([MESHY_WELCOME_MESSAGE]);
+      return;
+    }
+
+    const stored = loadMeshyChatMessages(activeClusterId, meshyChatRetention);
+    if (stored && stored.length > 0) {
+      setMessages(stored as Message[]);
+      return;
+    }
+
+    setMessages([MESHY_WELCOME_MESSAGE]);
+  }, [activeClusterId, meshyChatRetention.value, meshyChatRetention.unit]);
+
+  useEffect(() => {
+    if (!activeClusterId) return;
+
+    const timer = window.setTimeout(() => {
+      const persistable = messages.filter((message) => message.id !== "welcome");
+      if (persistable.length === 0) return;
+      saveMeshyChatMessages(
+        activeClusterId,
+        persistable as StoredMeshyMessage[],
+      );
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+  }, [activeClusterId, messages]);
 
   useEffect(() => {
     if (!showVoiceModal) return;

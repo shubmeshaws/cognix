@@ -32,6 +32,7 @@ export function AgentConfigRows({
       puterAuthToken: s.puterAuthToken,
       puterModel: s.puterModel,
       puterAppOrigin: s.puterAppOrigin,
+      meshyChatRetention: s.meshyChatRetention,
     })),
   );
 

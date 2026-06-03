@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare } from "lucide-react";
 
 import { InfoTooltip } from "@/components/InfoTooltip";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { Button } from "@/components/ui/button";
 import {
   fetchTeamsConfig,
@@ -95,20 +96,12 @@ export function TeamsIntegration() {
     "w-full rounded-md border bg-background px-3 py-2 font-mono text-xs";
 
   return (
-    <section className="rounded-lg border bg-card p-6 shadow-sm">
-      <div className="flex items-center gap-2">
-        <MessageSquare className="h-5 w-5 text-muted-foreground" />
-        <h2 className="text-lg font-semibold">Microsoft Teams</h2>
-      </div>
-      <p className="mt-1 text-sm text-muted-foreground">
-        When a pod is successfully healed, KubeHealer posts an adaptive card to
-        your Teams channel with cluster, pod, issue, fix details, and who
-        triggered the heal. The URL is stored on the agent (not in .env). Use
-        Send test notification first — heal alerts only fire when status is
-        healed (not escalated or failed).
-      </p>
-
-      <div className="mt-6 space-y-4">
+    <SettingsSection
+      title="Microsoft Teams"
+      description="When a pod is successfully healed, KubeHealer posts an adaptive card to your Teams channel with cluster, pod, issue, fix details, and who triggered the heal. The URL is stored on the agent (not in .env)."
+      icon={<MessageSquare className="h-5 w-5 text-muted-foreground" />}
+    >
+      <div className="space-y-4">
         <div className="space-y-2">
           <div className="flex items-center gap-1.5">
             <label className="text-sm font-medium" htmlFor="teams-webhook-url">
@@ -200,6 +193,6 @@ export function TeamsIntegration() {
           </p>
         )}
       </div>
-    </section>
+    </SettingsSection>
   );
 }

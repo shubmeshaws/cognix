@@ -63,6 +63,11 @@ export const LLM_PROVIDER_CATALOG: {
   },
 ];
 
+export function compactLlmChain(chain: LlmProviderChain): LlmProviderChain {
+  const providers = chain.filter((p): p is LlmProviderId => p !== null);
+  return [providers[0] ?? null, providers[1] ?? null, providers[2] ?? null];
+}
+
 export function normalizeLlmChain(
   input: unknown,
   legacyPreference?: string,
@@ -74,7 +79,7 @@ export function normalizeLlmChain(
         ? (v as LlmProviderId)
         : null,
     ) as LlmProviderChain;
-    return chain;
+    return compactLlmChain(chain);
   }
 
   switch (legacyPreference) {

@@ -2,6 +2,7 @@ import {
   DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_LLM_CHAIN,
   DEFAULT_PUTER_MODEL,
+  compactLlmChain,
   isLegacyDefaultLlmChain,
   normalizeLlmChain,
   type LlmProviderChain,
@@ -19,9 +20,17 @@ export type HealingMode =
   | "approval_required"
   | "observe_only";
 
+export type MeshyChatRetentionUnit = "minutes" | "hours" | "days";
+
+export interface MeshyChatRetention {
+  value: number;
+  unit: MeshyChatRetentionUnit;
+}
+
 export interface AgentSettings {
   llmChain: LlmProviderChain;
   healingMode: HealingMode;
+  meshyChatRetention: MeshyChatRetention;
   ollamaUrl: string;
   ollamaModel: string;
   openaiApiKey: string;
@@ -35,9 +44,15 @@ export interface AgentSettings {
 
 const STORAGE_KEY = "kubehealer-agent-settings";
 
+export const DEFAULT_MESHY_CHAT_RETENTION: MeshyChatRetention = {
+  value: 24,
+  unit: "hours",
+};
+
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   llmChain: DEFAULT_LLM_CHAIN,
   healingMode: "autonomous_with_approval",
+  meshyChatRetention: DEFAULT_MESHY_CHAT_RETENTION,
   ollamaUrl: "http://127.0.0.1:11434",
   ollamaModel: "llama3.2:1b",
   openaiApiKey: "",
@@ -70,6 +85,7 @@ function loadSettings(): AgentSettings {
     return {
       llmChain,
       healingMode: parsed.healingMode ?? DEFAULT_AGENT_SETTINGS.healingMode,
+      meshyChatRetention: normalizeMeshyChatRetention(parsed.meshyChatRetention),
       ollamaUrl: parsed.ollamaUrl ?? DEFAULT_AGENT_SETTINGS.ollamaUrl,
       ollamaModel: parsed.ollamaModel ?? DEFAULT_AGENT_SETTINGS.ollamaModel,
       openaiApiKey: parsed.openaiApiKey ?? "",
@@ -86,6 +102,26 @@ function loadSettings(): AgentSettings {
   }
 }
 
+function normalizeMeshyChatRetention(input: unknown): MeshyChatRetention {
+  if (
+    input &&
+    typeof input === "object" &&
+    "value" in input &&
+    "unit" in input
+  ) {
+    const value = Number((input as MeshyChatRetention).value);
+    const unit = (input as MeshyChatRetention).unit;
+    if (
+      Number.isFinite(value) &&
+      value >= 1 &&
+      (unit === "minutes" || unit === "hours" || unit === "days")
+    ) {
+      return { value: Math.floor(value), unit };
+    }
+  }
+  return DEFAULT_MESHY_CHAT_RETENTION;
+}
+
 function persistSettings(settings: AgentSettings): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
@@ -95,6 +131,7 @@ function snapshot(state: SettingsState): AgentSettings {
   return {
     llmChain: state.llmChain,
     healingMode: state.healingMode,
+    meshyChatRetention: state.meshyChatRetention,
     ollamaUrl: state.ollamaUrl,
     ollamaModel: state.ollamaModel,
     openaiApiKey: state.openaiApiKey,
@@ -134,6 +171,7 @@ interface SettingsState extends AgentSettings {
   setPuterAuthToken: (value: string) => void;
   setPuterModel: (value: string) => void;
   setPuterAppOrigin: (value: string) => void;
+  setMeshyChatRetention: (value: MeshyChatRetention) => void;
   reset: () => void;
 }
 
@@ -218,9 +256,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   removeProviderFromChain: (provider) => {
     set((state) => {
-      const nextChain = state.llmChain.map((p) =>
-        p === provider ? null : p,
-      ) as LlmProviderChain;
+      const nextChain = compactLlmChain(
+        state.llmChain.map((p) =>
+          p === provider ? null : p,
+        ) as LlmProviderChain,
+      );
       const next = { ...state, llmChain: nextChain };
       persistSettings(snapshot(next));
       return next;
@@ -302,6 +342,17 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setPuterAppOrigin: (puterAppOrigin) => {
     set((state) => {
       const next = { ...state, puterAppOrigin };
+      persistSettings(snapshot(next));
+      return next;
+    });
+  },
+
+  setMeshyChatRetention: (meshyChatRetention) => {
+    set((state) => {
+      const next = {
+        ...state,
+        meshyChatRetention: normalizeMeshyChatRetention(meshyChatRetention),
+      };
       persistSettings(snapshot(next));
       return next;
     });
