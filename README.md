@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="apps/web/public/brand/cognix-mark.svg" alt="Cognix logo" width="96" height="96" />
+  <img src="apps/web/public/brand/cognix-mark.svg" alt="" width="72" height="72" style="vertical-align: middle;" />
+  <span style="font-size: 3rem; font-weight: 700; vertical-align: middle; margin-left: 0.35rem; letter-spacing: -0.02em;">Cognix</span>
 </p>
 
-<h1 align="center">Cognix - Kubernetes Healing Agent</h1>
+<h1 align="center">Kubernetes Healing Agent</h1>
 
 <p align="center">
   AI-assisted Kubernetes pod healing — watch unhealthy pods, diagnose with LLM, and heal automatically from a friendly dashboard with <strong>Meshy</strong> (AI copilot).
