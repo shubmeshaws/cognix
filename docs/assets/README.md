@@ -2,6 +2,7 @@
 
 | File | What to capture |
 |------|-----------------|
-| `homepage.png` | Full dashboard homepage / overview (used in root README) |
+| `cognix-logo.png` | Logo mark + **Cognix** wordmark (README header) |
+| `homepage.png` | Full dashboard homepage / overview (README Application section) |
 
-Save a PNG of the Cognix overview page at `docs/assets/homepage.png` after running the app locally.
+Both files must be **committed and pushed** to appear on GitHub.

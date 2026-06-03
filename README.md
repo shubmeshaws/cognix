@@ -1,6 +1,5 @@
 <p align="center">
-  <img src="apps/web/public/brand/cognix-mark.svg" alt="" width="72" height="72" style="vertical-align: middle;" />
-  <span style="font-size: 3rem; font-weight: 700; vertical-align: middle; margin-left: 0.35rem; letter-spacing: -0.02em;">Cognix</span>
+  <img src="docs/assets/cognix-logo.png" alt="Cognix" height="72" />
 </p>
 
 <h1 align="center">Kubernetes Healing Agent</h1>
