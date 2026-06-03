@@ -159,6 +159,142 @@ function fixPodsTypos(
   return out;
 }
 
+/** STT often hears "nodes" as "node pulse", "north poles", "node polls", etc. */
+function fixNodesSpeechHomophones(
+  text: string,
+  corrections: string[],
+  seen: Set<string>,
+): string {
+  let out = text;
+
+  const clusterCue =
+    hasDevOpsContext(out) ||
+    /\b(list|show|get|how many|count|number of|tell me|please|cluster|kubernetes|kube|meshy|my|down)\b/i.test(
+      out,
+    );
+
+  const nodeMishearings = [
+    "node pulse",
+    "north pole",
+    "node poll",
+    "no pulse",
+  ] as const;
+
+  const applyNodeMishearing = (phrase: string, label: string) => {
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const plural = `${escaped}(?:s|es)?`;
+
+    out = replaceAll(
+      out,
+      new RegExp(`\\b(number|count|how many)\\s+of\\s+(the\\s+)?${plural}\\b`, "gi"),
+      "number of nodes",
+      label,
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      new RegExp(
+        `\\b(list|show|get|count|all|my|tell me|please tell me)\\s+(?:down\\s+)?(?:the\\s+|of\\s+(?:the\\s+)?)?${plural}\\b`,
+        "gi",
+      ),
+      (_m, lead: string) => `${lead.trim()} nodes`,
+      label,
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      new RegExp(`\\b(the\\s+)?${plural}\\s+(are|is|in|ready|status|down|up|failing|unhealthy)\\b`, "gi"),
+      (_m, lead: string, verb: string) =>
+        `${lead ?? ""}nodes ${verb}`.replace(/^\s+/, ""),
+      label,
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      new RegExp(`\\bcluster\\s+${plural}\\b`, "gi"),
+      "cluster nodes",
+      label,
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      new RegExp(`\\b${plural}\\s+in\\s+(my\\s+)?cluster\\b`, "gi"),
+      "nodes in my cluster",
+      label,
+      corrections,
+      seen,
+    );
+  };
+
+  for (const phrase of nodeMishearings) {
+    applyNodeMishearing(phrase, `${phrase} → nodes`);
+  }
+
+  if (clusterCue) {
+    out = replaceAll(
+      out,
+      /\bnode\s+pulses?\b/gi,
+      "nodes",
+      "node pulse → nodes",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bnorth\s+poles?\b/gi,
+      "nodes",
+      "north poles → nodes",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bnode\s+polls?\b/gi,
+      "nodes",
+      "node poll → nodes",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bno\s+pulses?\b/gi,
+      "nodes",
+      "no pulse → nodes",
+      corrections,
+      seen,
+    );
+  }
+
+  return out;
+}
+
+/** Drop common STT lead-in noise before cluster questions. */
+function stripVoiceLeadInFiller(
+  text: string,
+  corrections: string[],
+  seen: Set<string>,
+): string {
+  const clusterCue =
+    hasDevOpsContext(text) ||
+    /\b(list|show|get|how many|count|number of|cluster|kubernetes|kube|nodes?|pods?)\b/i.test(
+      text,
+    );
+  if (!clusterCue) return text;
+
+  return replaceAll(
+    text,
+    /^\s*(chandan|sandan|tell me the|please tell me the|please tell me|tell me)\s+/i,
+    "",
+    "lead-in trimmed",
+    corrections,
+    seen,
+  );
+}
+
 /** Speech homophones for cluster-specific resource names. */
 function fixSpeechHomophones(
   text: string,
@@ -231,6 +367,169 @@ function fixSpeechHomophones(
   return out;
 }
 
+/** STT often hears "namespace(s)" as "species", "name spaces", etc. */
+function fixNamespaceSpeechHomophones(
+  text: string,
+  corrections: string[],
+  seen: Set<string>,
+): string {
+  let out = text;
+
+  const clusterCue =
+    hasDevOpsContext(out) ||
+    /\b(list|show|get|how many|count|number of|name|names|cluster|kubernetes|kube|meshy)\b/i.test(
+      out,
+    );
+
+  out = replaceAll(
+    out,
+    /\b(how many|count|number of|list|show|get|all|the|my)\s+(the\s+)?species\b/gi,
+    (_m, lead: string) => `${lead} namespaces`,
+    "species → namespaces",
+    corrections,
+    seen,
+  );
+  out = replaceAll(
+    out,
+    /\bnamespace\s+species\b/gi,
+    "namespaces",
+    "species → namespaces",
+    corrections,
+    seen,
+  );
+  out = replaceAll(
+    out,
+    /\b(name|names)\s+of\s+(the\s+)?species\b/gi,
+    "names of namespaces",
+    "species → namespaces",
+    corrections,
+    seen,
+  );
+
+  if (clusterCue) {
+    out = replaceAll(out, /\bspecies\b/gi, "namespaces", "species → namespaces", corrections, seen);
+    out = replaceAll(out, /\bspecie\b/gi, "namespace", "specie → namespace", corrections, seen);
+  }
+
+  return out;
+}
+
+/** STT often mishears EKS/AWS terms — only fix with cluster or AWS context. */
+function fixAwsEksSpeechHomophones(
+  text: string,
+  corrections: string[],
+  seen: Set<string>,
+): string {
+  let out = text;
+
+  const awsCue =
+    hasDevOpsContext(out) ||
+    /\b(list|show|get|how many|count|cluster|kubernetes|kube|meshy|aws|amazon|deploy|upgrade|install|configure|check|what|which|my)\b/i.test(
+      out,
+    );
+
+  if (awsCue) {
+    out = replaceAll(
+      out,
+      /\bexcellent\s+(cluster|addons?|add-ons?|version|ctl|control plane)\b/gi,
+      (_m, tail: string) => `eks ${tail}`,
+      "excellent → eks",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\b(the\s+)?excellent\b/gi,
+      "eks",
+      "excellent → eks",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bi\s+am\s+(role|roles|policy|policies|user|users|account|permissions?)\b/gi,
+      (_m, noun: string) => `iam ${noun}`,
+      "I am → IAM",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\badd\s+ons?\b/gi,
+      "addons",
+      "add on → addon",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bnode\s+pool\b/gi,
+      "nodepool",
+      "node pool → nodepool",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bnode\s+pools\b/gi,
+      "nodepools",
+      "node pools → nodepools",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bsecurity\s+groups?\b/gi,
+      (m) => (/\bs$/i.test(m) ? "securitygroups" : "securitygroup"),
+      "security group → securitygroup",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\btarget\s+groups?\b/gi,
+      (m) => (/\bs$/i.test(m) ? "targetgroups" : "targetgroup"),
+      "target group → targetgroup",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bauto\s+scaling\s+groups?\b/gi,
+      (m) => (/\bs$/i.test(m) ? "autoscalinggroups" : "autoscalinggroup"),
+      "auto scaling group → ASG",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bload\s+balancer\s+controller\b/gi,
+      "awsloadbalancercontroller",
+      "load balancer controller",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bpod\s+identity\b/gi,
+      "podidentity",
+      "pod identity",
+      corrections,
+      seen,
+    );
+    out = replaceAll(
+      out,
+      /\bvpc\s+cni\b/gi,
+      "vpc-cni",
+      "VPC CNI",
+      corrections,
+      seen,
+    );
+  }
+
+  return out;
+}
+
 function applyReplacementRules(
   text: string,
   rules: ReadonlyArray<readonly [RegExp, string, string]>,
@@ -273,8 +572,12 @@ export function normalizeKubernetesInput(raw: string): NormalizeKubernetesInputR
   let text = raw.replace(/\s+/g, " ").trim();
 
   text = fixNotesToNodes(text, corrections, seen);
+  text = fixNodesSpeechHomophones(text, corrections, seen);
   text = fixPodsTypos(text, corrections, seen);
+  text = stripVoiceLeadInFiller(text, corrections, seen);
+  text = fixNamespaceSpeechHomophones(text, corrections, seen);
   text = fixSpeechHomophones(text, corrections, seen);
+  text = fixAwsEksSpeechHomophones(text, corrections, seen);
   text = applyReplacementRules(text, DEVOPS_RUN_TOGETHER_REPLACEMENTS, corrections, seen);
   text = applyReplacementRules(text, DEVOPS_PHRASE_REPLACEMENTS, corrections, seen);
   text = applyReplacementRules(text, DEVOPS_SPELLING_REPLACEMENTS, corrections, seen);

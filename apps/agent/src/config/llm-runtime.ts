@@ -30,7 +30,7 @@ export interface LlmRuntimeOverrides {
 let overrides: LlmRuntimeOverrides = {};
 
 export function setLlmRuntime(patch: LlmRuntimeOverrides): void {
-  if (patch.llmChain) {
+  if (patch.llmChain !== undefined) {
     const { llmPreference: _drop, ...rest } = overrides;
     overrides = { ...rest, ...patch };
     return;
@@ -46,8 +46,12 @@ export function getLlmRuntime(): Readonly<LlmRuntimeOverrides> {
   return overrides;
 }
 
+export function hasExplicitLlmChain(): boolean {
+  return overrides.llmChain !== undefined;
+}
+
 export function getEffectiveLlmChain(): LlmProviderChain {
-  if (overrides.llmChain) {
+  if (hasExplicitLlmChain()) {
     return normalizeLlmChain(overrides.llmChain);
   }
   return normalizeLlmChain(undefined, overrides.llmPreference);
@@ -128,16 +132,17 @@ export function isProviderConfigured(
 }
 
 export function getConfiguredChain(env: Env): LlmProviderId[] {
-  const explicit = getEffectiveLlmChain().filter(
+  const chain = getEffectiveLlmChain();
+  const configuredInChain = chain.filter(
     (p): p is LlmProviderId => p !== null && isProviderConfigured(p, env),
   );
 
-  // If user explicitly configured a chain (even partially), use it as-is.
-  if (explicit.length > 0) return explicit;
+  // User applied a chain in Settings — honor slot order only; never auto-fallback to Ollama.
+  if (hasExplicitLlmChain()) {
+    return configuredInChain;
+  }
 
-  // Auto-detect available providers from environment when no chain configured.
-  // This lets Ollama work out-of-the-box when OLLAMA_URL is set in .env
-  // without requiring the user to go to Settings → Apply first.
+  // No explicit chain yet — auto-detect from environment (Ollama-first for local dev).
   const detected: LlmProviderId[] = [];
   if (isProviderConfigured("ollama", env)) detected.push("ollama");
   if (isProviderConfigured("openai", env)) detected.push("openai");

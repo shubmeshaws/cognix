@@ -4,6 +4,7 @@ import {
   type LlmProviderId,
 } from "@kubehealer/shared";
 
+import { saveLlmConfigToDisk } from "../config/llm-config-store.js";
 import type { Env } from "../config/env.js";
 import {
   getEffectiveLlmChain,
@@ -88,6 +89,7 @@ export async function applyLlmConfigPatch(
     normalized.llmChain = normalizeLlmChain(patch.llmChain);
   }
   setLlmRuntime(normalized);
+  await saveLlmConfigToDisk();
   return getLlmConfigResponse(env);
 }
 

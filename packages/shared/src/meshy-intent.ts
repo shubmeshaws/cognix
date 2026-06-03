@@ -30,6 +30,8 @@ function tokenize(text: string): string[] {
     .map((t) => {
       if (["parts", "pots", "podes", "chords"].includes(t)) return "pods";
       if (["part", "pot", "podd", "chord"].includes(t)) return "pod";
+      if (t === "species") return "namespaces";
+      if (t === "specie") return "namespace";
       if (t === "notes") return "nodes";
       if (t === "nods") return "nodes";
       return t;
@@ -131,24 +133,27 @@ export function inferMeshyResourceFocus(message: string): MeshyResourceFocus {
   const lower = normalized.toLowerCase();
 
   if (/\b(health|healthy|unhealthy|status)\b/i.test(lower)) return "health";
-  if (/\b(nodepool|nodepools|karpenter)\b/i.test(lower)) return "nodepools";
+  if (/\bnamespaces?\b/i.test(lower)) return "namespaces";
+  if (/\b(nodepool|nodepools)\b/i.test(lower)) return "nodepools";
+  if (/\bkarpenter\b/i.test(lower) && /\b(pool|nodepool|provisioner|autoscal)\b/i.test(lower)) {
+    return "nodepools";
+  }
   if (/\b(nodeclaim|nodeclaims)\b/i.test(lower)) return "nodeclaims";
-  if (/\bpods?\b/i.test(lower)) return "pods";
-  if (/\bnodes?\b/i.test(lower)) return "nodes";
+  if (/\bpod(?!cast|disruption|security)s?\b/i.test(lower)) return "pods";
+  if (/\bnode(?!pool|claim|class|lease|port|s?pace)s?\b/i.test(lower)) return "nodes";
   if (/\bdeployments?\b/i.test(lower)) return "deployments";
   if (/\bservices?\b/i.test(lower)) return "services";
-  if (/\bnamespaces?\b/i.test(lower)) return "namespaces";
   if (/\b(cluster|kubernetes|k8s|kube)\b/i.test(lower)) return "cluster";
 
   const matched = findMatchedDevOpsTerms(normalized);
   const has = (...needles: string[]) =>
     matched.some((term) => needles.some((n) => term.includes(n) || term === n));
 
-  if (has("nodepool", "nodepools", "karpenter")) return "nodepools";
+  if (has("namespace", "namespaces")) return "namespaces";
+  if (has("nodepool", "nodepools")) return "nodepools";
   if (has("nodeclaim", "nodeclaims")) return "nodeclaims";
   if (has("deployment", "deployments")) return "deployments";
   if (has("service", "services")) return "services";
-  if (has("namespace", "namespaces")) return "namespaces";
   if (has("node", "nodes")) return "nodes";
   if (has("pod", "pods")) return "pods";
   if (has("cluster", "kubernetes", "k8s", "kube")) return "cluster";

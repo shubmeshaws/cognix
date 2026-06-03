@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import type { Env } from "./config/env.js";
 import { loadIntegrationsFromDisk } from "./config/integrations-store.js";
+import { loadLlmConfigFromDisk } from "./config/llm-config-store.js";
 import type { ServerDeps } from "./context/deps.js";
 import { createDb } from "./db/client.js";
 import { clusters } from "./db/schema.js";
@@ -37,6 +38,7 @@ export async function buildServer(env: Env): Promise<BuildServerResult> {
   });
 
   await loadIntegrationsFromDisk();
+  await loadLlmConfigFromDisk();
   const { getEffectiveTeamsWebhookUrl } = await import(
     "./services/teams-config.js"
   );

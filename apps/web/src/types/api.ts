@@ -256,10 +256,12 @@ export interface AgentStatus {
     connectedClusters: number;
   };
   llm: {
-    ollama: { url: string; ok: boolean };
-    openaiConfigured: boolean;
-    anthropicConfigured: boolean;
-    puterConfigured: boolean;
+    chain: LlmProviderChainApi;
+    activeChain: LlmProviderIdApi[];
+    ollama: { url: string; ok: boolean; model: string };
+    openai: { configured: boolean; model: string };
+    anthropic: { configured: boolean; model: string };
+    puter: { configured: boolean; model: string };
   };
 }
 

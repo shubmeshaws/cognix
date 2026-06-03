@@ -3,6 +3,7 @@ import {
   asksMeshyCount,
   asksMeshyList,
   asksMeshyName,
+  formatMeshyItemList,
   inferMeshyResourceFocus,
 } from "@kubehealer/shared";
 
@@ -292,7 +293,22 @@ export function tryMeshyDirectAnswer(
   if (/\bhow many namespaces\b|\bnamespace count\b/i.test(msg)) {
     return voiceMode
       ? `${ctx.namespaces.length} namespaces.`
-      : `**${ctx.namespaces.length}** namespaces: ${ctx.namespaces.slice(0, 15).join(", ")}${ctx.namespaces.length > 15 ? "…" : ""}${kubectlBlock("kubectl get namespaces")}`;
+      : `**${ctx.namespaces.length}** namespaces.${kubectlBlock("kubectl get namespaces")}`;
+  }
+
+  if (
+    /\b(list|show|get)\s+(the\s+)?namespaces?\b|\bwhat namespaces\b/i.test(msg)
+  ) {
+    if (ctx.namespaces.length === 0) {
+      return voiceMode
+        ? "No namespaces found."
+        : `No namespaces returned from the API.${kubectlBlock("kubectl get namespaces")}`;
+    }
+    return formatMeshyItemList(ctx.namespaces, {
+      voiceMode,
+      title: "Namespaces in your cluster",
+      kubectl: "kubectl get namespaces",
+    });
   }
 
   if (/\bhow many deployments\b|\bdeployment count\b/i.test(msg)) {
@@ -313,10 +329,13 @@ export function tryMeshyDirectAnswer(
         ? "No nodepools found. Karpenter may not be installed."
         : `No **NodePools** returned from the API. If you use Karpenter, install the CRD or check RBAC.${kubectlBlock("kubectl get nodepools")}`;
     }
-    const names = ctx.nodepools.slice(0, 10).map((np) => np.name).join(", ");
+    const names = ctx.nodepools.slice(0, 10).map((np) => np.name);
     return voiceMode
-      ? `${ctx.nodepoolCount} nodepools: ${names}.`
-      : `**${ctx.nodepoolCount}** Karpenter **NodePools** (live API): ${names}${ctx.nodepoolCount > 10 ? "…" : ""}.${kubectlBlock("kubectl get nodepools")}`;
+      ? `${ctx.nodepoolCount} nodepools: ${names.join(". ")}.`
+      : formatMeshyItemList(
+          ctx.nodepools.map((np) => np.name),
+          { title: "Karpenter NodePools", kubectl: "kubectl get nodepools" },
+        );
   }
 
   if (/\b(list|show|get)\s+(the\s+)?nodepools?\b/i.test(msg)) {
@@ -451,10 +470,24 @@ export function tryMeshyDirectAnswer(
         : `**${ctx.serviceCount}** services.${kubectlBlock("kubectl get services -A")}`;
     }
 
-    if (focus === "namespaces" && asksMeshyCount(message)) {
-      return voiceMode
-        ? `${ctx.namespaces.length} namespaces.`
-        : `**${ctx.namespaces.length}** namespaces.${kubectlBlock("kubectl get namespaces")}`;
+    if (focus === "namespaces") {
+      if (asksMeshyCount(message)) {
+        return voiceMode
+          ? `${ctx.namespaces.length} namespaces.`
+          : `**${ctx.namespaces.length}** namespaces.${kubectlBlock("kubectl get namespaces")}`;
+      }
+      if (asksMeshyList(message) || /\b(name|names)\b/i.test(msg)) {
+        if (ctx.namespaces.length === 0) {
+          return voiceMode
+            ? "No namespaces found."
+            : `No namespaces found.${kubectlBlock("kubectl get namespaces")}`;
+        }
+        return formatMeshyItemList(ctx.namespaces, {
+          voiceMode,
+          title: "Namespaces in your cluster",
+          kubectl: "kubectl get namespaces",
+        });
+      }
     }
 
     if (focus === "nodepools") {

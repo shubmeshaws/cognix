@@ -96,6 +96,12 @@ export {
 } from "./heal-rules.js";
 
 export {
+  formatMeshyCommaListReply,
+  formatMeshyItemList,
+  type MeshyItemListOptions,
+} from "./meshy-format.js";
+
+export {
   DEVOPS_ABBREVIATIONS,
   DEVOPS_PHRASE_REPLACEMENTS,
   DEVOPS_TOPIC_TERMS,

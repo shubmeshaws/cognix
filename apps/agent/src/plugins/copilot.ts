@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import {
   buildMeshyIntentHint,
+  formatMeshyCommaListReply,
   isExplicitPodListRequest,
   isAffirmativeReply,
   isKubernetesRelated,
@@ -491,6 +492,7 @@ Answer the user's question directly and specifically.
 Do not lead with pod counts unless they asked about pods, nodes, or cluster health.
 For general Kubernetes concepts, explain clearly using live data when relevant.
 Never say filler like "checking now" or "let me check". Plain English only: no markdown, bullets, asterisks, backticks, emojis, or symbols.
+When listing multiple names, put each name on its own line (one per line), not comma-separated in one sentence.
 Maximum 70 words.`
               : `You are Meshy, the user's Kubernetes assistant, replying for text-to-speech.
 Reply naturally in plain English only: no markdown, bullets, asterisks, backticks, emojis, or symbols.
@@ -502,6 +504,7 @@ User input may contain typos or speech-to-text errors — infer intent from cont
 Answer the user's question directly and specifically.
 Do not lead with pod counts unless they asked about pods, nodes, deployments, services, or cluster health.
 For general Kubernetes concepts, explain clearly and tie in live data when relevant.
+When listing multiple resource names, use a markdown bullet list with one item per line.
 Keep responses concise (2-4 sentences) and use markdown sparingly.`
               : `You are Meshy, the user's Kubernetes assistant.
 Write a friendly, natural response. Do NOT use placeholder values or echo instructions.
@@ -811,7 +814,7 @@ You can approve the self-healing remediation directly below.`;
       }
 
       return reply.code(200).send({
-        message: finalMessage,
+        message: formatMeshyCommaListReply(finalMessage),
         uiCard,
       });
     } catch (err) {

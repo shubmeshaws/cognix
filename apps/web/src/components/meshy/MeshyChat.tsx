@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Sparkles,
@@ -80,6 +80,7 @@ export function MeshyChat() {
   const [loading, setLoading] = useState(false);
   const [llmConfig, setLlmConfig] = useState<LlmConfigResponse | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const voiceScrollEndRef = useRef<HTMLDivElement>(null);
 
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [actionDone, setActionDone] = useState<Record<string, boolean>>({});
@@ -124,9 +125,26 @@ export function MeshyChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const scrollVoiceToBottom = (behavior: ScrollBehavior = "smooth") => {
+    voiceScrollEndRef.current?.scrollIntoView({ behavior, block: "end" });
+  };
+
   useEffect(() => {
     scrollToBottom();
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!showVoiceModal) return;
+    scrollVoiceToBottom();
+  }, [
+    showVoiceModal,
+    voiceTurns,
+    voiceTranscriptFinal,
+    voiceTranscriptInterim,
+    voiceProcessing,
+    voiceResponse,
+    voicePhase,
+  ]);
 
   useEffect(() => {
     if (!token) return;
@@ -136,6 +154,16 @@ export function MeshyChat() {
   }, [token]);
 
   const prepareUserInput = (raw: string) => normalizeKubernetesInput(raw.trim());
+
+  const liveVoiceDisplay = useMemo(() => {
+    const raw = [voiceTranscriptFinal, voiceTranscriptInterim]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (!raw) return null;
+    const { normalized, corrections } = prepareUserInput(raw);
+    return { raw, normalized, corrections };
+  }, [voiceTranscriptFinal, voiceTranscriptInterim]);
 
   const isMeshySpeaking = () => {
     const audio = ttsAudioRef.current;
@@ -592,10 +620,14 @@ export function MeshyChat() {
         return;
       }
 
-      const historyPayload = [...messages, userMsg].map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      const voiceHistory = voiceTurns.flatMap((turn) => [
+        { role: "user" as const, content: turn.user },
+        { role: "assistant" as const, content: turn.assistant },
+      ]);
+      const historyPayload = [
+        ...voiceHistory,
+        { role: "user" as const, content: normalized },
+      ];
 
       const response = await fetch(`${API_BASE}/api/copilot/chat`, {
         method: "POST",
@@ -1006,41 +1038,42 @@ export function MeshyChat() {
         )}
       </div>
 
-      {/* Siri-Style Interactive Voice Modal */}
+      {/* Fullscreen Meshy Voice */}
       {showVoiceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xl transition-all duration-500 animate-in fade-in">
-          <div className="relative flex flex-col items-center w-full max-w-3xl min-h-[80vh] max-h-[90vh] p-10 mx-4 rounded-3xl border border-white/10 bg-gradient-to-b from-neutral-900/95 via-neutral-950/98 to-black text-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            
-            {/* Red Cross Cancel — Top Left */}
-            <button
-              type="button"
-              onClick={closeVoiceAssistant}
-              className="absolute top-5 left-5 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-600/40 hover:text-red-300 hover:scale-110 transition-all duration-200 shadow-lg"
-              title="Close Voice Assistant"
-            >
-              <X className="h-5 w-5" />
-            </button>
+        <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-neutral-900 via-neutral-950 to-black text-white animate-in fade-in duration-300">
+          {/* Top Gradient Bar */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-400 opacity-60" />
 
-            {/* Top Gradient Bar */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-400 opacity-60" />
+          {/* Close — Top Left */}
+          <button
+            type="button"
+            onClick={closeVoiceAssistant}
+            className="absolute top-5 left-5 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-600/40 hover:text-red-300 hover:scale-110 transition-all duration-200 shadow-lg"
+            title="Close Voice Assistant"
+          >
+            <X className="h-5 w-5" />
+          </button>
 
-            {/* Glowing Siri Orbit Animation */}
-            <div className="relative flex items-center justify-center h-44 w-44 mt-4 mb-4 shrink-0">
-              {/* Outer Orbit Rings */}
-              <div className="absolute inset-0 rounded-full border border-violet-500/10 animate-ping" style={{ animationDuration: '3s' }} />
-              <div className="absolute inset-4 rounded-full border border-fuchsia-500/20 animate-ping" style={{ animationDuration: '2s' }} />
-              <div className="absolute inset-8 rounded-full border border-cyan-400/15 animate-ping" style={{ animationDuration: '2.5s' }} />
-              
-              {/* Inner Pulsing Core */}
-              <div className={cn(
-                "absolute h-28 w-28 rounded-full bg-gradient-to-tr from-violet-600 via-fuchsia-500 to-cyan-400 blur-xl transition-all duration-500",
-                voicePhase === "speaking" ? "scale-125 opacity-55 animate-pulse" :
-                voicePhase === "processing" ? "scale-110 opacity-40 animate-spin" :
-                voicePhase === "responding" ? "scale-100 opacity-50" :
-                "scale-100 opacity-30"
-              )} />
+          {/* Header — mic + status */}
+          <div className="shrink-0 flex flex-col items-center px-6 pt-14 pb-4">
+            <div className="relative flex items-center justify-center h-36 w-36 mb-3">
+              <div className="absolute inset-0 rounded-full border border-violet-500/10 animate-ping" style={{ animationDuration: "3s" }} />
+              <div className="absolute inset-4 rounded-full border border-fuchsia-500/20 animate-ping" style={{ animationDuration: "2s" }} />
+              <div className="absolute inset-8 rounded-full border border-cyan-400/15 animate-ping" style={{ animationDuration: "2.5s" }} />
 
-              {/* Central Mic / State Button */}
+              <div
+                className={cn(
+                  "absolute h-24 w-24 rounded-full bg-gradient-to-tr from-violet-600 via-fuchsia-500 to-cyan-400 blur-xl transition-all duration-500",
+                  voicePhase === "speaking"
+                    ? "scale-125 opacity-55 animate-pulse"
+                    : voicePhase === "processing"
+                      ? "scale-110 opacity-40 animate-spin"
+                      : voicePhase === "responding"
+                        ? "scale-100 opacity-50"
+                        : "scale-100 opacity-30",
+                )}
+              />
+
               <button
                 type="button"
                 onClick={handleVoiceMicPress}
@@ -1050,7 +1083,7 @@ export function MeshyChat() {
                     ? "border-red-500/40 bg-red-600/20 text-red-400 scale-110 shadow-[0_0_30px_rgba(239,68,68,0.35)]"
                     : voicePhase === "processing"
                       ? "border-amber-500/40 bg-amber-600/10 text-amber-400"
-                      : "border-violet-500/40 bg-violet-600/10 text-violet-400 hover:bg-violet-600/20 hover:scale-105"
+                      : "border-violet-500/40 bg-violet-600/10 text-violet-400 hover:bg-violet-600/20 hover:scale-105",
                 )}
               >
                 {voicePhase === "processing" ? (
@@ -1065,19 +1098,17 @@ export function MeshyChat() {
               </button>
             </div>
 
-            {/* Live mic level — reacts when you speak close/loud */}
-            <div className="mb-4 flex h-1.5 w-48 overflow-hidden rounded-full bg-white/10">
+            <div className="mb-3 flex h-1.5 w-48 overflow-hidden rounded-full bg-white/10">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all duration-75"
                 style={{ width: `${Math.round(micLevel * 100)}%` }}
               />
             </div>
 
-            {/* Title and Status */}
             <h3 className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 mb-1">
               Meshy Voice
             </h3>
-            <p className="text-sm text-neutral-400 mb-5 leading-relaxed text-center max-w-md">
+            <p className="text-sm text-neutral-400 leading-relaxed text-center max-w-lg">
               {voicePhase === "monitoring" &&
                 "Speak clearly — words appear left to right as you talk. I send after you pause for 3 seconds."}
               {voicePhase === "speaking" &&
@@ -1087,119 +1118,117 @@ export function MeshyChat() {
               {voicePhase === "responding" &&
                 "Speaking… tap the mic when you want to ask another question."}
             </p>
+          </div>
 
-            {/* Transcript Area */}
-            {(voiceTranscriptFinal || voiceTranscriptInterim) && (
-              <div className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 mb-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <AnimatedVoiceAssistantIcon size={16} active listening />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Your Request</span>
-                </div>
-                <p className="text-sm font-medium text-white/90 leading-relaxed">
-                  &ldquo;
-                  {voiceTranscriptFinal && (
-                    <span>{voiceTranscriptFinal}</span>
-                  )}
-                  {voiceTranscriptInterim && (
-                    <>
-                      {voiceTranscriptFinal ? " " : ""}
-                      <span className="text-cyan-200/80">{voiceTranscriptInterim}</span>
-                      <span
-                        className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-violet-400 align-middle"
-                        aria-hidden
-                      />
-                    </>
-                  )}
-                  &rdquo;
-                </p>
-              </div>
-            )}
-
-            {/* Processing Indicator */}
-            {voiceProcessing && (
-              <div className="w-full flex items-center justify-center gap-3 py-6 animate-in fade-in duration-300">
-                <div className="flex gap-1.5">
-                  <div className="h-2.5 w-2.5 rounded-full bg-violet-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="h-2.5 w-2.5 rounded-full bg-fuchsia-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="h-2.5 w-2.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-                <span className="text-sm text-neutral-400 font-medium">Meshy is thinking...</span>
-              </div>
-            )}
-
-            {/* Voice conversation history */}
-            {voiceTurns.length > 0 && (
-              <div
-                className="w-full flex-1 space-y-3 overflow-y-auto mb-4 pr-1"
-                style={{ maxHeight: "38vh" }}
-              >
-                {voiceTurns.map((turn, index) => (
-                  <div key={`voice-turn-${index}`} className="space-y-2">
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <AnimatedVoiceAssistantIcon size={14} active listening />
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
-                          You
-                        </span>
-                      </div>
-                      <p className="text-sm text-white/90">&ldquo;{turn.user}&rdquo;</p>
-                      {turn.userNote && (
-                        <p className="mt-1 text-[11px] text-neutral-500">{turn.userNote}</p>
-                      )}
-                    </div>
-                    <div className="bg-gradient-to-br from-violet-600/5 via-transparent to-cyan-500/5 border border-white/10 rounded-2xl p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-600 text-white">
-                          <Sparkles className="h-3 w-3" />
+          {/* Scrollable conversation body — older turns scroll up, latest at bottom */}
+          <div className="flex-1 min-h-0 w-full overflow-y-auto">
+            <div className="min-h-full flex flex-col justify-end gap-4 max-w-4xl mx-auto px-6 pb-6">
+              {voiceTurns.length > 0 && (
+                <div className="w-full space-y-3">
+                  {voiceTurns.map((turn, index) => (
+                    <div key={`voice-turn-${index}`} className="space-y-2">
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <AnimatedVoiceAssistantIcon size={14} active listening />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
+                            You
+                          </span>
                         </div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
-                          Meshy
-                        </span>
+                        <p className="text-sm text-white/90">&ldquo;{turn.user}&rdquo;</p>
+                        {turn.userNote && (
+                          <p className="mt-1 text-[11px] text-neutral-500">{turn.userNote}</p>
+                        )}
                       </div>
-                      <MeshyMessageContent
-                        content={turn.assistant}
-                        variant="assistant"
-                        className="text-sm text-white/90 [&_strong]:text-violet-200 [&_code]:text-emerald-200"
-                      />
+                      <div className="bg-gradient-to-br from-violet-600/5 via-transparent to-cyan-500/5 border border-white/10 rounded-2xl p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-600 text-white">
+                            <Sparkles className="h-3 w-3" />
+                          </div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
+                            Meshy
+                          </span>
+                        </div>
+                        <MeshyMessageContent
+                          content={turn.assistant}
+                          variant="assistant"
+                          className="text-sm text-white/90 [&_strong]:text-violet-200 [&_code]:text-emerald-200"
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* AI Response Area — latest turn while processing next */}
-            {voiceResponse && voiceTurns.length === 0 && (
-              <div className="w-full flex-1 bg-gradient-to-br from-violet-600/5 via-transparent to-cyan-500/5 border border-white/10 rounded-2xl p-5 overflow-y-auto transition-all animate-in fade-in slide-in-from-bottom-3 duration-500" style={{ maxHeight: '35vh' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-white">
-                    <Sparkles className="h-3.5 w-3.5" />
-                  </div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Meshy Response</span>
+                  ))}
                 </div>
-                <MeshyMessageContent
-                  content={voiceResponse}
-                  variant="assistant"
-                  className="text-white/90 [&_strong]:text-violet-200 [&_code]:text-emerald-200"
-                />
-              </div>
-            )}
+              )}
 
-            {/* Bottom hint */}
-            {voicePhase === "responding" && (
-              <p className="text-[11px] text-neutral-500 mt-4 animate-in fade-in duration-500">
-                Press <span className="text-red-400 font-semibold">✕</span> to close. Voice icon by{" "}
-                <a
-                  href="https://icons8.com/icon/Kf8TpsrQqLln/voice-assistant"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline hover:text-violet-400"
-                >
-                  Icons8
-                </a>
-                .
-              </p>
-            )}
+              {(voiceTranscriptFinal || voiceTranscriptInterim) && liveVoiceDisplay && (
+                <div className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <AnimatedVoiceAssistantIcon size={16} active listening />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
+                      Your Request
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-white/90 leading-relaxed">
+                    &ldquo;{liveVoiceDisplay.normalized}&rdquo;
+                  </p>
+                  {liveVoiceDisplay.raw !== liveVoiceDisplay.normalized && (
+                    <p className="mt-1.5 text-[11px] text-neutral-500">
+                      Heard: &ldquo;{liveVoiceDisplay.raw}&rdquo;
+                    </p>
+                  )}
+                  {liveVoiceDisplay.corrections.length > 0 && (
+                    <p className="mt-1 text-[11px] text-cyan-300/80">
+                      Interpreted: {liveVoiceDisplay.corrections.join(", ")}
+                    </p>
+                  )}
+                </div>
+              )}
 
+              {voiceProcessing && (
+                <div className="w-full flex items-center justify-center gap-3 py-4 animate-in fade-in duration-300">
+                  <div className="flex gap-1.5">
+                    <div className="h-2.5 w-2.5 rounded-full bg-violet-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <div className="h-2.5 w-2.5 rounded-full bg-fuchsia-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <div className="h-2.5 w-2.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                  <span className="text-sm text-neutral-400 font-medium">Meshy is thinking...</span>
+                </div>
+              )}
+
+              {voiceResponse && voiceTurns.length === 0 && !voiceProcessing && (
+                <div className="w-full bg-gradient-to-br from-violet-600/5 via-transparent to-cyan-500/5 border border-white/10 rounded-2xl p-5 transition-all animate-in fade-in slide-in-from-bottom-3 duration-500">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-white">
+                      <Sparkles className="h-3.5 w-3.5" />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
+                      Meshy Response
+                    </span>
+                  </div>
+                  <MeshyMessageContent
+                    content={voiceResponse}
+                    variant="assistant"
+                    className="text-white/90 [&_strong]:text-violet-200 [&_code]:text-emerald-200"
+                  />
+                </div>
+              )}
+
+              <div ref={voiceScrollEndRef} aria-hidden className="h-px shrink-0" />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="shrink-0 px-6 py-4 text-center border-t border-white/5">
+            <p className="text-[11px] text-neutral-500">
+              Press <span className="text-red-400 font-semibold">✕</span> to close · Voice icon by{" "}
+              <a
+                href="https://icons8.com/icon/Kf8TpsrQqLln/voice-assistant"
+                target="_blank"
+                rel="noreferrer"
+                className="underline hover:text-violet-400"
+              >
+                Icons8
+              </a>
+            </p>
           </div>
         </div>
       )}

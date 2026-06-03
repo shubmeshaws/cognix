@@ -159,8 +159,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         state.puterModel === DEFAULT_AGENT_SETTINGS.puterModel;
 
       return {
-        // llmChain is only updated via user actions (add/remove/apply), not agent fetch.
-        ...(patch.llmChain
+        ...(patch.llmChain !== undefined
           ? { llmChain: normalizeLlmChain(patch.llmChain) }
           : {}),
         ...(stillDefaults && patch.ollamaUrl

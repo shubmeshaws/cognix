@@ -92,15 +92,49 @@ export function parsePendingClarification(
   return { type: "list", resource };
 }
 
+/** Infer resource focus from a short assistant summary (avoids list noise like the karpenter namespace). */
+function inferFocusFromAssistantSummary(content: string): MeshyListResource | null {
+  const head = content.split("\n").slice(0, 4).join(" ").toLowerCase();
+
+  if (
+    /\b\d+\s+namespaces?\b/.test(head) ||
+    /\bnamespace count\b/.test(head) ||
+    /\bnamespaces?\s+in your cluster\b/.test(head) ||
+    /\bhow many namespaces\b/.test(head)
+  ) {
+    return "namespaces";
+  }
+  if (/\b\d+\s+nodes?\b/.test(head) || /\bnode count\b/.test(head)) return "nodes";
+  if (/\b\d+\s+pods?\b/.test(head) || /\bpod count\b/.test(head)) return "pods";
+  if (/\b\d+\s+deployments?\b/.test(head)) return "deployments";
+  if (/\b\d+\s+services?\b/.test(head)) return "services";
+  if (/\b\d+\s+nodepools?\b/.test(head)) return "nodepools";
+  if (/\b\d+\s+nodeclaims?\b/.test(head)) return "nodeclaims";
+
+  return toListResource(inferMeshyResourceFocus(head));
+}
+
 /** Infer the resource the user was just discussing from recent turns. */
 export function inferTopicFromHistory(
   history: MeshyHistoryTurn[],
 ): MeshyListResource | null {
-  const recent = history
-    .slice(-8)
-    .map((h) => h.content)
-    .join(" ");
-  return toListResource(inferMeshyResourceFocus(recent));
+  for (let i = history.length - 1; i >= 0; i--) {
+    const turn = history[i];
+    if (turn.role !== "user") continue;
+    const focus = toListResource(inferMeshyResourceFocus(turn.content));
+    if (focus) return focus;
+    if (history.length - 1 - i > 4) break;
+  }
+
+  for (let i = history.length - 1; i >= 0; i--) {
+    const turn = history[i];
+    if (turn.role !== "assistant") continue;
+    const focus = inferFocusFromAssistantSummary(turn.content);
+    if (focus) return focus;
+    if (history.length - 1 - i > 4) break;
+  }
+
+  return null;
 }
 
 export function isAmbiguousListRequest(message: string): boolean {
@@ -163,12 +197,7 @@ export function resolveMeshyConversationTurn(
   if (isAmbiguousListRequest(normalized)) {
     const topic = inferTopicFromHistory(history);
     if (topic) {
-      const pendingAction: MeshyPendingAction = { type: "list", resource: topic };
-      return {
-        kind: "clarify",
-        question: buildClarificationQuestion(pendingAction, voiceMode),
-        pendingAction,
-      };
+      return { kind: "continue", message: actionToMessage({ type: "list", resource: topic }) };
     }
   }
 

@@ -6,9 +6,15 @@ import { normalizeLlmChain } from "@kubehealer/shared";
 import type { ServerDeps } from "../context/deps.js";
 import {
   getEffectiveAnthropicKey,
+  getEffectiveAnthropicModel,
+  getEffectiveLlmChain,
+  getEffectiveOllamaModel,
   getEffectiveOllamaUrl,
   getEffectiveOpenAiKey,
+  getEffectiveOpenAiModel,
   getEffectivePuterAuthToken,
+  getEffectivePuterModel,
+  getConfiguredChain,
 } from "../config/llm-runtime.js";
 import {
   applyLlmConfigPatch,
@@ -64,13 +70,25 @@ export const agentStatusPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async
         connectedClusters: opts.deps.clusterHub.connectedClusters(),
       },
       llm: {
+        chain: getEffectiveLlmChain(),
+        activeChain: getConfiguredChain(opts.deps.env),
         ollama: {
           url: ollamaUrl,
           ok: ollamaOk,
+          model: getEffectiveOllamaModel(),
         },
-        openaiConfigured: Boolean(openaiKey),
-        anthropicConfigured: Boolean(anthropicKey),
-        puterConfigured: Boolean(puterToken),
+        openai: {
+          configured: Boolean(openaiKey),
+          model: getEffectiveOpenAiModel(),
+        },
+        anthropic: {
+          configured: Boolean(anthropicKey),
+          model: getEffectiveAnthropicModel(),
+        },
+        puter: {
+          configured: Boolean(puterToken),
+          model: getEffectivePuterModel(),
+        },
       },
       teams: {
         configured: Boolean(getEffectiveTeamsWebhookUrl(opts.deps.env)),

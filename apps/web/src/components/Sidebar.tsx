@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { getActiveLlmDisplay } from "@/lib/llm-display";
 import {
   useAgentStatus,
   useAlerts,
@@ -71,7 +72,7 @@ export function Sidebar() {
   const activeCluster = clustersQuery.data?.find((c) => c.id === activeClusterId);
   const clusterLabel = activeCluster?.name ?? (activeClusterId ? "Cluster" : "No cluster");
   const clusterLive = activeCluster?.health.ok ?? false;
-  const ollamaOk = agentQuery.data?.llm.ollama.ok ?? false;
+  const activeLlm = getActiveLlmDisplay(agentQuery.data);
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-[200px] flex-col border-r bg-card">
@@ -146,15 +147,17 @@ export function Sidebar() {
         </div>
 
         <div className="rounded-md border bg-muted/40 px-2 py-2">
-          <p className="text-2xs text-muted-foreground">Ollama</p>
+          <p className="text-2xs text-muted-foreground">{activeLlm.label}</p>
           <div className="mt-1 flex items-center justify-between gap-1">
-            <span className="truncate text-xs font-medium">llama3.1:8b</span>
+            <span className="truncate text-xs font-medium" title={activeLlm.detail}>
+              {activeLlm.model}
+            </span>
             <span
               className={cn(
                 "h-2 w-2 shrink-0 rounded-full",
-                ollamaOk ? "bg-emerald-500" : "bg-red-500",
+                activeLlm.ok ? "bg-emerald-500" : "bg-red-500",
               )}
-              title={ollamaOk ? "Connected" : "Unreachable"}
+              title={activeLlm.ok ? "Ready" : activeLlm.detail}
             />
           </div>
         </div>

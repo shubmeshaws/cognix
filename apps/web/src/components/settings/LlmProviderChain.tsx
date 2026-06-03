@@ -218,6 +218,7 @@ export function LlmProviderChain() {
   useEffect(() => {
     if (!configQuery.data) return;
     mergeFromAgent({
+      llmChain: configQuery.data.llmChain,
       ollamaUrl: configQuery.data.ollamaUrl,
       ollamaModel: configQuery.data.ollamaModel,
       openaiModel: configQuery.data.openaiModel,
@@ -245,32 +246,42 @@ export function LlmProviderChain() {
     const body: Parameters<typeof updateLlmConfig>[1] = {
       llmChain: settings.llmChain,
     };
-    const url = settings.ollamaUrl.trim();
-    const oModel = settings.ollamaModel.trim();
-    const oAiModel = settings.openaiModel.trim();
-    const claudeModel = settings.anthropicModel.trim();
-    const pModel = settings.puterModel.trim();
-    if (url) body.ollamaUrl = url;
-    if (oModel) body.ollamaModel = oModel;
-    if (oAiModel) body.openaiModel = oAiModel;
-    if (claudeModel) body.anthropicModel = claudeModel;
-    if (pModel) body.puterModel = pModel;
-    if (settings.openaiApiKey.trim()) {
-      body.openaiApiKey = settings.openaiApiKey.trim();
+
+    if (settings.llmChain.includes("ollama")) {
+      const url = settings.ollamaUrl.trim();
+      const model = settings.ollamaModel.trim();
+      if (url) body.ollamaUrl = url;
+      if (model) body.ollamaModel = model;
     }
-    if (settings.anthropicApiKey.trim()) {
-      body.anthropicApiKey = settings.anthropicApiKey.trim();
+    if (settings.llmChain.includes("openai")) {
+      const model = settings.openaiModel.trim();
+      if (model) body.openaiModel = model;
+      if (settings.openaiApiKey.trim()) {
+        body.openaiApiKey = settings.openaiApiKey.trim();
+      }
     }
-    if (settings.puterAuthToken.trim()) {
-      body.puterAuthToken = settings.puterAuthToken.trim();
+    if (settings.llmChain.includes("anthropic")) {
+      const model = settings.anthropicModel.trim();
+      if (model) body.anthropicModel = model;
+      if (settings.anthropicApiKey.trim()) {
+        body.anthropicApiKey = settings.anthropicApiKey.trim();
+      }
     }
+    if (settings.llmChain.includes("puter")) {
+      const model = settings.puterModel.trim();
+      if (model) body.puterModel = model;
+      if (settings.puterAuthToken.trim()) {
+        body.puterAuthToken = settings.puterAuthToken.trim();
+      }
+    }
+
     const origin =
       typeof window !== "undefined"
         ? normalizePuterAppOrigin(
             settings.puterAppOrigin.trim() || window.location.origin,
           )
         : settings.puterAppOrigin.trim() || undefined;
-    if (origin) {
+    if (origin && settings.llmChain.includes("puter")) {
       body.puterAppOrigin = origin;
       useSettingsStore.getState().setPuterAppOrigin(origin);
     }
