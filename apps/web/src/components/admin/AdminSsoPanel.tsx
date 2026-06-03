@@ -6,8 +6,9 @@ import { Github, Globe, KeyRound, Linkedin, ShieldCheck } from "lucide-react";
 
 import { useAgentToken } from "@/components/auth-context";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/input";
-import { fetchSsoConfig, parseApiErrorMessage, updateSsoConfig } from "@/lib/api";
+import { fetchSsoConfig, parseApiErrorMessage, resetSsoConfig, updateSsoConfig } from "@/lib/api";
 import type { SsoProviderId } from "@/types/api";
 import { cn } from "@/lib/utils";
 
@@ -105,6 +106,11 @@ export function AdminSsoPanel() {
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(
     null,
   );
+  const [resetTarget, setResetTarget] = useState<{
+    id: SsoProviderId;
+    label: string;
+  } | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   const configQuery = useQuery({
     queryKey: ["admin-sso-config", token],
@@ -204,6 +210,40 @@ export function AdminSsoPanel() {
     return hasClientId && hasSecret;
   }
 
+  function hasStoredConfig(providerId: SsoProviderId): boolean {
+    const draft = drafts[providerId];
+    return (
+      draft.enabled ||
+      draft.clientId.trim().length > 0 ||
+      draft.clientSecretSet ||
+      draft.clientSecret.trim().length > 0 ||
+      (providerId === "google" && draft.allowedDomains.trim().length > 0)
+    );
+  }
+
+  const resetMutation = useMutation({
+    mutationFn: async (providerId: SsoProviderId) => {
+      if (!token) throw new Error("Not authenticated");
+      return resetSsoConfig(token, providerId);
+    },
+    onSuccess: (_data, providerId) => {
+      setResetTarget(null);
+      setResetError(null);
+      setSaveMsg({
+        ok: true,
+        text: `${PROVIDERS.find((p) => p.id === providerId)?.label ?? providerId} SSO credentials reset.`,
+      });
+      setDrafts((prev) => ({
+        ...prev,
+        [providerId]: emptyDraft(),
+      }));
+      void queryClient.invalidateQueries({ queryKey: ["admin-sso-config"] });
+    },
+    onError: (err) => {
+      setResetError(parseApiErrorMessage(err));
+    },
+  });
+
   return (
     <section className="rounded-lg border border-border bg-card p-6 shadow-sm">
       <div className="flex items-start gap-3">
@@ -236,6 +276,7 @@ export function AdminSsoPanel() {
         {PROVIDERS.map(({ id, label, description, icon: Icon, clientIdPlaceholder }) => {
           const draft = drafts[id];
           const saving = saveMutation.isPending && saveMutation.variables === id;
+          const resetting = resetMutation.isPending && resetMutation.variables === id;
           const isActive = draft.enabled && (draft.clientSecretSet || draft.clientSecret.trim());
 
           return (
@@ -376,10 +417,27 @@ export function AdminSsoPanel() {
                 </p>
               )}
 
-              <div className="mt-4 flex justify-end border-t border-border pt-4">
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
                 <Button
                   type="button"
-                  disabled={saving || !canSave(id)}
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    resetting ||
+                    saving ||
+                    !hasStoredConfig(id)
+                  }
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => {
+                    setResetError(null);
+                    setResetTarget({ id, label });
+                  }}
+                >
+                  {resetting ? "Resetting…" : "Reset credentials"}
+                </Button>
+                <Button
+                  type="button"
+                  disabled={saving || resetting || !canSave(id)}
                   onClick={() => {
                     setSaveMsg(null);
                     saveMutation.mutate(id);
@@ -392,6 +450,34 @@ export function AdminSsoPanel() {
           );
         })}
       </div>
+
+      <ConfirmDialog
+        open={resetTarget !== null}
+        title={
+          resetTarget ? `Reset ${resetTarget.label} credentials?` : "Reset credentials?"
+        }
+        description={
+          resetTarget
+            ? `This removes the saved client ID, secret, and settings for ${resetTarget.label} from the agent. The provider will no longer appear on the login page until reconfigured.`
+            : ""
+        }
+        error={resetError}
+        confirmLabel="Reset credentials"
+        variant="destructive"
+        loading={resetMutation.isPending}
+        onCancel={() => {
+          if (!resetMutation.isPending) {
+            setResetTarget(null);
+            setResetError(null);
+          }
+        }}
+        onConfirm={() => {
+          if (!resetTarget) return;
+          setSaveMsg(null);
+          setResetError(null);
+          resetMutation.mutate(resetTarget.id);
+        }}
+      />
     </section>
   );
 }

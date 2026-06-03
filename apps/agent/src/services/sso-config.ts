@@ -90,19 +90,16 @@ function adminViewForProvider(
   env: Env,
   id: SsoProviderId,
 ): SsoProviderAdminView {
+  void env;
   const stored = getSsoRuntime()[id];
-  const effective = getStoredProvider(env, id);
-  const allowedDomainsSource =
-    stored?.allowedDomains ?? effective?.allowedDomains;
+  const allowedDomainsSource = stored?.allowedDomains;
 
   return {
-    enabled: Boolean(stored?.enabled ?? effective?.enabled),
-    clientId: stored?.clientId ?? effective?.clientId ?? "",
-    clientSecretSet: Boolean(stored?.clientSecret || effective?.clientSecret),
-    clientSecretPreview: maskClientSecret(
-      stored?.clientSecret ?? effective?.clientSecret,
-    ),
-    configured: isProviderActive(stored ?? effective),
+    enabled: Boolean(stored?.enabled),
+    clientId: stored?.clientId ?? "",
+    clientSecretSet: Boolean(stored?.clientSecret),
+    clientSecretPreview: maskClientSecret(stored?.clientSecret),
+    configured: isProviderActive(stored),
     ...(id === "google"
       ? { allowedDomains: formatAllowedDomains(allowedDomainsSource) }
       : {}),
@@ -233,6 +230,17 @@ export async function applySsoConfigPatch(
     }
   }
 
+  setSsoRuntime(next);
+  await saveSsoToDisk();
+  return getSsoConfigAdminResponse(env);
+}
+
+export async function resetSsoProviderConfig(
+  env: Env,
+  providerId: SsoProviderId,
+): Promise<SsoConfigAdminResponse> {
+  const next = { ...getSsoRuntime() };
+  delete next[providerId];
   setSsoRuntime(next);
   await saveSsoToDisk();
   return getSsoConfigAdminResponse(env);

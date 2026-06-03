@@ -29,6 +29,7 @@ import type {
   ResetPasswordResponse,
   SsoConfigPatch,
   SsoConfigResponse,
+  SsoProviderId,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -503,5 +504,15 @@ export async function updateSsoConfig(
   return apiFetch<SsoConfigResponse>("/api/agent/sso-config", token, {
     method: "PATCH",
     body: JSON.stringify(patch),
+  });
+}
+
+export async function resetSsoConfig(
+  token: string,
+  provider: SsoProviderId,
+): Promise<SsoConfigResponse> {
+  return apiFetch<SsoConfigResponse>("/api/agent/sso-config/reset", token, {
+    method: "POST",
+    body: JSON.stringify({ provider }),
   });
 }

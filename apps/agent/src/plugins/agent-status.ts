@@ -30,6 +30,7 @@ import {
 import {
   applySsoConfigPatch,
   getSsoConfigAdminResponse,
+  resetSsoProviderConfig,
 } from "../services/sso-config.js";
 import { getSetupHealth } from "../services/setup-health.js";
 import { requireAdmin } from "../lib/require-admin.js";
@@ -56,6 +57,10 @@ const ssoConfigPatchSchema = z.object({
   google: ssoProviderPatchSchema.optional(),
   github: ssoProviderPatchSchema.optional(),
   linkedin: ssoProviderPatchSchema.optional(),
+});
+
+const ssoResetSchema = z.object({
+  provider: z.enum(["google", "github", "linkedin"]),
 });
 
 export const agentStatusPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async (
@@ -146,6 +151,24 @@ export const agentStatusPlugin: FastifyPluginAsync<{ deps: ServerDeps }> = async
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to save SSO configuration";
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  app.post("/sso-config/reset", async (request, reply) => {
+    const ok = await requireAdmin(request, reply, userService);
+    if (!ok) return reply;
+
+    const body = ssoResetSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: "Invalid SSO reset payload" });
+    }
+
+    try {
+      return await resetSsoProviderConfig(opts.deps.env, body.data.provider);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to reset SSO configuration";
       return reply.code(400).send({ error: message });
     }
   });
