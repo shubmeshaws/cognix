@@ -549,16 +549,130 @@ build_production_apps() {
   pnpm build
 }
 
-# Echo full env file contents (actual on-disk values after setup).
-echo_env_file() {
+# ANSI colors for required-env output (terminal only; file stays plain).
+ENV_C_RESET=$'\033[0m'
+ENV_C_BOLD_CYAN=$'\033[1;36m'
+ENV_C_BOLD_YELLOW=$'\033[1;33m'
+ENV_C_GREEN=$'\033[0;32m'
+ENV_C_DIM=$'\033[2m'
+ENV_C_BOLD=$'\033[1m'
+
+env_output_use_color() {
+  [[ -t 1 ]]
+}
+
+# Print one required KEY=value (actual value from disk).
+env_print_kv() {
+  local key="$1" value="$2" use_color="$3"
+  [[ -n "$value" ]] || return 0
+  if [[ "$use_color" == true ]]; then
+    printf '  %s%s%s%s=%s%s%s\n' \
+      "$ENV_C_BOLD_YELLOW" "$key" "$ENV_C_RESET" \
+      "$ENV_C_GREEN" "$value" "$ENV_C_RESET"
+  else
+    printf '%s=%s\n' "$key" "$value"
+  fi
+}
+
+# Section banner for an env file.
+env_print_section() {
+  local label="$1" file="$2" use_color="$3"
+  if [[ "$use_color" == true ]]; then
+    printf '\n%s┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_RESET"
+    printf '%s┃  %s%s%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_BOLD" "$label" "$ENV_C_RESET"
+    printf '%s┃  %s%s%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_DIM" "$file" "$ENV_C_RESET"
+    printf '%s┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_RESET"
+  else
+    printf '\n# %s\n# %s\n' "$label" "$file"
+  fi
+}
+
+# Required keys for apps/agent/.env (optional keys on disk are omitted).
+agent_required_keys() {
   local file="$1"
-  echo ""
-  echo "========== ${file} =========="
+  printf '%s\n' DATABASE_URL JWT_SECRET OLLAMA_URL
+  if [[ -f "$file" ]] && grep -qE '^AGENT_HOST=' "$file" 2>/dev/null; then
+    printf '%s\n' AGENT_HOST
+  fi
+}
+
+# Required keys for apps/web/.env (depends on auth mode).
+web_required_keys() {
+  local file="$1"
+  local auth_disabled
+  auth_disabled="$(env_file_get "$file" NEXT_PUBLIC_AUTH_DISABLED)"
+  if [[ "$auth_disabled" == "true" ]]; then
+    printf '%s\n' NEXT_PUBLIC_API_URL JWT_SECRET NEXT_PUBLIC_AUTH_DISABLED
+  else
+    printf '%s\n' \
+      NEXT_PUBLIC_API_URL JWT_SECRET NEXT_PUBLIC_APP_URL NEXTAUTH_SECRET NEXTAUTH_URL
+  fi
+}
+
+docker_agent_required_keys() {
+  printf '%s\n' DATABASE_URL JWT_SECRET OLLAMA_URL
+}
+
+docker_web_required_keys() {
+  printf '%s\n' \
+    NEXT_PUBLIC_API_URL NEXT_PUBLIC_APP_URL JWT_SECRET NEXTAUTH_SECRET NEXTAUTH_URL
+}
+
+# Emit required variables for one env file.
+emit_required_env_block() {
+  local file="$1" label="$2" use_color="$3" keys_fn="$4"
+  local key value
+  env_print_section "$label" "$file" "$use_color"
   if [[ ! -f "$file" ]]; then
-    echo "(file not created)"
+    if [[ "$use_color" == true ]]; then
+      printf '  %s(not created — run setup or copy from .env.example)%s\n' "$ENV_C_DIM" "$ENV_C_RESET"
+    else
+      echo "# (not created)"
+    fi
     return 0
   fi
-  cat "$file"
+  while IFS= read -r key; do
+    [[ -n "$key" ]] || continue
+    value="$(env_file_get "$file" "$key")"
+    env_print_kv "$key" "$value" "$use_color"
+  done < <("$keys_fn" "$file")
+}
+
+emit_all_required_env() {
+  local use_color="$1"
+  local agent_env="$REPO_ROOT/apps/agent/.env"
+  local web_env="$REPO_ROOT/apps/web/.env"
+  local root_env="$REPO_ROOT/.env"
+  local root_web="$REPO_ROOT/.env.web"
+
+  if [[ "$use_color" == true ]]; then
+    printf '\n%s╔══════════════════════════════════════════════════════════════════╗%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_RESET"
+    printf '%s║  REQUIRED ENV (copy values into your .env files)                 ║%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_RESET"
+    printf '%s╚══════════════════════════════════════════════════════════════════╝%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_RESET"
+  else
+    echo ""
+    echo "================================================================================"
+    echo "REQUIRED ENV VARIABLES (actual values from this installation)"
+    echo "================================================================================"
+  fi
+
+  if [[ "$MODE" == "dev" || "$MODE" == "production" ]]; then
+    emit_required_env_block "$agent_env" "Agent API" "$use_color" agent_required_keys
+    emit_required_env_block "$web_env" "Web UI" "$use_color" web_required_keys
+  elif [[ "$MODE" == "docker" ]]; then
+    emit_required_env_block "$root_env" "Docker — Agent" "$use_color" docker_agent_required_keys
+    emit_required_env_block "$root_web" "Docker — Web" "$use_color" docker_web_required_keys
+  elif [[ "$MODE" == "deps-only" ]]; then
+    [[ -f "$agent_env" ]] && emit_required_env_block "$agent_env" "Agent API" "$use_color" agent_required_keys
+    [[ -f "$web_env" ]] && emit_required_env_block "$web_env" "Web UI" "$use_color" web_required_keys
+  fi
+
+  if [[ "$use_color" == true ]]; then
+    printf '\n%s  Optional keys (LLM API keys, SSO, TTS, webhooks) stay in .env.example — not shown.%s\n' "$ENV_C_DIM" "$ENV_C_RESET"
+  else
+    echo ""
+    echo "# Optional keys (LLM, SSO, TTS, webhooks) are in .env.example — not listed here."
+  fi
 }
 
 start_infra_services() {
@@ -744,38 +858,29 @@ EOF
 }
 
 print_env_files() {
-  local agent_env="$REPO_ROOT/apps/agent/.env"
-  local web_env="$REPO_ROOT/apps/web/.env"
-  local root_env="$REPO_ROOT/.env"
-  local root_web="$REPO_ROOT/.env.web"
   local out_file="$REPO_ROOT/SETUP_COPY_PASTE.txt"
+  local use_color=false
+  env_output_use_color && use_color=true
 
   {
-    echo ""
-    echo "================================================================================"
-    echo "ENV FILES (actual contents on disk)"
-    echo "================================================================================"
-    if [[ "$MODE" == "dev" || "$MODE" == "production" ]]; then
-      echo_env_file "$agent_env"
-      echo_env_file "$web_env"
-    elif [[ "$MODE" == "docker" ]]; then
-      echo_env_file "$root_env"
-      echo_env_file "$root_web"
-    else
-      echo_env_file "$agent_env"
-      echo_env_file "$web_env"
-      echo_env_file "$root_env"
-      echo_env_file "$root_web"
-    fi
+    emit_all_required_env false
     if [[ "$MODE" != "deps-only" ]]; then
       print_hosting_commands
     fi
     echo ""
     echo "================================================================================"
-  } | tee "$out_file"
+  } >"$out_file"
+
+  emit_all_required_env "$use_color"
+
+  if [[ "$MODE" != "deps-only" ]]; then
+    print_hosting_commands
+    echo ""
+    echo "================================================================================"
+  fi
 
   echo ""
-  log "Env + hosting commands saved to: $out_file"
+  log "Required env (plain) + hosting steps saved to: $out_file"
   log "Hosting guide: $REPO_ROOT/docs/HOSTING.md"
 }
 
