@@ -11,6 +11,7 @@ import {
   createUser,
   deleteUser,
   fetchUsers,
+  parseApiErrorMessage,
   resetUserPassword,
   updateUser,
 } from "@/lib/api";
@@ -112,9 +113,12 @@ export function AdminUsersPanel() {
         </div>
       </div>
 
-      {error ? (
+      {error || usersQuery.isError ? (
         <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
+          {error ??
+            parseApiErrorMessage(
+              usersQuery.error ?? new Error("Failed to load users"),
+            )}
         </p>
       ) : null}
 
@@ -265,7 +269,9 @@ export function AdminUsersPanel() {
                   </tr>
                 ) : null}
 
-                {!usersQuery.isLoading && userCount === 0 ? (
+                {!usersQuery.isLoading &&
+                !usersQuery.isError &&
+                userCount === 0 ? (
                   <tr>
                     <td
                       colSpan={6}

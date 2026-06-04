@@ -32,7 +32,22 @@ import type {
   SsoProviderId,
 } from "@/types/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { getAgentInternalBaseUrl } from "@/lib/agent-internal-url";
+
+/** Browser: same-origin /api/agent proxy. Server: direct agent URL. */
+function resolveApiUrl(path: string): string {
+  if (typeof window !== "undefined") {
+    if (path.startsWith("/api/")) {
+      return `/api/agent/${path.slice("/api/".length)}`;
+    }
+    return path;
+  }
+  const base = (process.env.NEXT_PUBLIC_API_URL ?? getAgentInternalBaseUrl()).replace(
+    /\/$/,
+    "",
+  );
+  return `${base}${path}`;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -62,7 +77,7 @@ async function apiFetch<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(resolveApiUrl(path), {
     ...init,
     headers,
   });
@@ -85,7 +100,11 @@ async function apiFetch<T>(
 }
 
 export function getWsBaseUrl(): string {
-  return API_BASE.replace(/^http/, "ws");
+  const httpBase =
+    typeof window !== "undefined"
+      ? (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001")
+      : (process.env.NEXT_PUBLIC_API_URL ?? getAgentInternalBaseUrl());
+  return httpBase.replace(/^http/, "ws");
 }
 
 export async function fetchPods(
