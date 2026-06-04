@@ -34,7 +34,7 @@ sudo su ubuntu
 cd /home/ubuntu/
 git clone https://github.com/shubmeshaws/cognix.git cognix
 cd cognix
-chmod +x scripts/setup-ubuntu.sh
+sudo chmod +x scripts/setup-ubuntu.sh
 ./scripts/setup-ubuntu.sh -y
 ```
 
