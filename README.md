@@ -77,6 +77,14 @@ sudo corepack prepare pnpm@9.15.0 --activate
 pnpm -v
 ```
 
+If **`EACCES`** on `node_modules`, files were likely created as `root` (do not run `sudo pnpm` in the repo):
+
+```bash
+sudo chown -R "$USER:$USER" ~/cognix
+rm -rf ~/cognix/node_modules
+cd ~/cognix && pnpm install
+```
+
 3. Open **`http://<your-server-public-ip>:3000/setup`** → check DB → create schema → **`/login`** → generate admin credentials → sign in.
 
 **Important env (written by the script):**

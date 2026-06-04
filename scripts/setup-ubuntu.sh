@@ -788,6 +788,7 @@ print_api_health_checks() {
       "$SERVER_PUBLIC_IP" "$WEB_PORT" "$SERVER_PUBLIC_IP" "$WEB_PORT"
     printf '\n  %s# pnpm on Node 20 must be 9.x (not 11+):%s  pnpm -v  →  9.15.0\n' "$ENV_C_DIM" "$ENV_C_RESET"
     printf '  %s# fix:%s sudo npm install -g pnpm@9.15.0\n' "$ENV_C_DIM" "$ENV_C_RESET"
+    printf '  %s# EACCES on node_modules:%s sudo chown -R $USER:$USER %s\n' "$ENV_C_DIM" "$REPO_ROOT" "$ENV_C_RESET"
   else
     echo "curl -s http://127.0.0.1:${AGENT_PORT}/health"
     [[ "$agent_ok" == true ]] && echo "→ OK $agent_body" || echo "→ not running (pnpm dev:agent)"
@@ -1012,8 +1013,30 @@ start_infra_services() {
   compose_cmd up ollama-pull || warn "ollama-pull failed; pull manually: docker compose up ollama-pull"
 }
 
+ensure_repo_owned_by_user() {
+  [[ -d "$REPO_ROOT" ]] || return 0
+  if [[ "$(id -u)" -eq 0 ]]; then
+    die "Do not run pnpm install as root. Use your normal user (e.g. ubuntu)."
+  fi
+  local owner
+  owner="$(stat -c '%U' "$REPO_ROOT" 2>/dev/null || echo "")"
+  if [[ "$owner" != "$RUN_USER" ]]; then
+    warn "Repo owned by $owner — fixing permissions for $RUN_USER"
+    run_with_elevation chown -R "$RUN_USER:$RUN_USER" "$REPO_ROOT"
+    return 0
+  fi
+  if [[ -e "$REPO_ROOT/node_modules" ]]; then
+    owner="$(stat -c '%U' "$REPO_ROOT/node_modules" 2>/dev/null || echo "")"
+    if [[ -n "$owner" && "$owner" != "$RUN_USER" ]]; then
+      warn "node_modules owned by $owner — fixing (avoid sudo pnpm / npm in repo)"
+      run_with_elevation chown -R "$RUN_USER:$RUN_USER" "$REPO_ROOT"
+    fi
+  fi
+}
+
 install_node_dependencies() {
   cd "$REPO_ROOT"
+  ensure_repo_owned_by_user
   ensure_project_pnpm
   log "Installing pnpm dependencies…"
   pnpm install
