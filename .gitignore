@@ -19,6 +19,7 @@ out/
 !.env.*.example
 .env.local
 .env.*.local
+SETUP_COPY_PASTE.txt
 
 # --- Runtime / local data ---
 .kubehealer/

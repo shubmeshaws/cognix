@@ -338,6 +338,28 @@ write_env_if_missing() {
   log "Created $dest from example"
 }
 
+sed_inplace() {
+  if [[ "$(uname)" == Darwin ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
+
+env_file_get() {
+  local file="$1" key="$2"
+  if [[ ! -f "$file" ]]; then
+    echo ""
+    return 0
+  fi
+  grep -E "^${key}=" "$file" 2>/dev/null | head -1 | cut -d= -f2- || true
+}
+
+env_needs_secret() {
+  local value="$1"
+  [[ -z "$value" || "$value" == *change-me* ]]
+}
+
 configure_env_files() {
   local jwt agent_env="$REPO_ROOT/apps/agent/.env" web_env="$REPO_ROOT/apps/web/.env"
   local root_env="$REPO_ROOT/.env" root_web="$REPO_ROOT/.env.web"
@@ -350,35 +372,60 @@ configure_env_files() {
     write_env_if_missing "$root_web" "$REPO_ROOT/.env.web.example" ".env.web"
   fi
 
-  if [[ -f "$agent_env" ]] && grep -q 'change-me-to-a-random-string' "$agent_env" 2>/dev/null; then
+  if [[ "$MODE" == "dev" && -f "$agent_env" ]]; then
+    if grep -qE '^ALLOW_LOCAL_KUBECONFIG=' "$agent_env"; then
+      sed_inplace 's/^ALLOW_LOCAL_KUBECONFIG=.*/ALLOW_LOCAL_KUBECONFIG=true/' "$agent_env"
+    fi
+  fi
+
+  local need_jwt=false
+  local f
+  for f in "$agent_env" "$web_env" "$root_env" "$root_web"; do
+    [[ -f "$f" ]] || continue
+    if env_needs_secret "$(env_file_get "$f" JWT_SECRET)"; then
+      need_jwt=true
+      break
+    fi
+  done
+
+  if [[ "$need_jwt" == true ]]; then
     jwt="$(generate_secret)"
-    log "Setting JWT_SECRET in apps/agent/.env"
-    if [[ "$(uname)" == Darwin ]]; then
-      sed -i '' "s/JWT_SECRET=.*/JWT_SECRET=$jwt/" "$agent_env"
-    else
-      sed -i "s/JWT_SECRET=.*/JWT_SECRET=$jwt/" "$agent_env"
-    fi
-    if [[ -f "$web_env" ]]; then
-      if [[ "$(uname)" == Darwin ]]; then
-        sed -i '' "s/JWT_SECRET=.*/JWT_SECRET=$jwt/" "$web_env"
-      else
-        sed -i "s/JWT_SECRET=.*/JWT_SECRET=$jwt/" "$web_env"
+    log "Generated JWT_SECRET (saved into env files)"
+    for f in "$agent_env" "$web_env" "$root_env" "$root_web"; do
+      [[ -f "$f" ]] || continue
+      if grep -qE '^JWT_SECRET=' "$f" 2>/dev/null; then
+        sed_inplace "s|^JWT_SECRET=.*|JWT_SECRET=${jwt}|" "$f"
       fi
-    fi
-    if [[ -f "$root_env" ]]; then
-      sed -i "s/JWT_SECRET=.*/JWT_SECRET=$jwt/" "$root_env" 2>/dev/null || true
-    fi
-    if [[ -f "$root_web" ]]; then
-      sed -i "s/JWT_SECRET=.*/JWT_SECRET=$jwt/" "$root_web" 2>/dev/null || true
-      local nauth
+    done
+  fi
+
+  if [[ -f "$root_web" ]]; then
+    local nauth
+    nauth="$(env_file_get "$root_web" NEXTAUTH_SECRET)"
+    if env_needs_secret "$nauth"; then
       nauth="$(generate_secret)"
-      if grep -q 'NEXTAUTH_SECRET=' "$root_web" 2>/dev/null; then
-        sed -i "s/NEXTAUTH_SECRET=.*/NEXTAUTH_SECRET=$nauth/" "$root_web" 2>/dev/null || true
+      if grep -qE '^NEXTAUTH_SECRET=' "$root_web" 2>/dev/null; then
+        sed_inplace "s|^NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=${nauth}|" "$root_web"
+      else
+        echo "NEXTAUTH_SECRET=${nauth}" >>"$root_web"
       fi
+      log "Generated NEXTAUTH_SECRET in .env.web"
     fi
   fi
 
   chmod +x "$REPO_ROOT/scripts/ollama-pull.sh" 2>/dev/null || true
+}
+
+# Echo full env file contents (actual on-disk values after setup).
+echo_env_file() {
+  local file="$1"
+  echo ""
+  echo "========== ${file} =========="
+  if [[ ! -f "$file" ]]; then
+    echo "(file not created)"
+    return 0
+  fi
+  cat "$file"
 }
 
 start_infra_services() {
@@ -443,73 +490,43 @@ start_docker_stack() {
   done
 }
 
+print_env_files() {
+  local agent_env="$REPO_ROOT/apps/agent/.env"
+  local web_env="$REPO_ROOT/apps/web/.env"
+  local root_env="$REPO_ROOT/.env"
+  local root_web="$REPO_ROOT/.env.web"
+  local out_file="$REPO_ROOT/SETUP_COPY_PASTE.txt"
+
+  {
+    echo ""
+    echo "================================================================================"
+    echo "ENV FILES (actual contents on disk)"
+    echo "================================================================================"
+    if [[ "$MODE" == "dev" ]]; then
+      echo_env_file "$agent_env"
+      echo_env_file "$web_env"
+    elif [[ "$MODE" == "docker" ]]; then
+      echo_env_file "$root_env"
+      echo_env_file "$root_web"
+    else
+      echo_env_file "$agent_env"
+      echo_env_file "$web_env"
+      echo_env_file "$root_env"
+      echo_env_file "$root_web"
+    fi
+    echo ""
+    echo "================================================================================"
+  } | tee "$out_file"
+
+  echo ""
+  log "Env files echoed above and saved to: $out_file"
+}
+
 print_summary() {
-  local ip
-  ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost')"
-  cat <<EOF
-
-$(printf '\033[1;32m✓ Cognix setup complete\033[0m')
-
-Repo:     $REPO_ROOT
-Mode:     $MODE
-
-Services:
-  Postgres   localhost:5433  (user/pass/db: cognix/cognix/cognix)
-  Redis      localhost:6379
-EOF
-  if [[ "$SKIP_OLLAMA" != true ]]; then
-    echo "  Ollama     http://localhost:11434"
-  fi
-  cat <<EOF
-
-Env files:
-  apps/agent/.env   — DATABASE_URL, JWT_SECRET, OLLAMA_URL
-  apps/web/.env     — NEXT_PUBLIC_API_URL, JWT_SECRET
-
-EOF
-  case "$MODE" in
-    dev)
-      cat <<EOF
-Start the app (two terminals):
-
-  cd $REPO_ROOT && pnpm dev:agent
-  cd $REPO_ROOT && pnpm dev:web
-
-Open:  http://localhost:3000
-       http://${ip}:3000  (from another machine on the LAN)
-
-Optional:
-  ./scripts/start-supertonic-tts.sh   — Meshy voice (port 7788)
-  pnpm --filter @kubehealer/agent create-admin   — create admin user (if auth enabled)
-
-Docs:  $REPO_ROOT/docs/SETUP.md
-EOF
-      ;;
-    docker)
-      cat <<EOF
-Docker stack is running:
-
-  Web:    http://localhost:3000  (http://${ip}:3000)
-  Agent:  http://localhost:3001/health
-
-Logs:   cd $REPO_ROOT && docker compose logs -f
-
-Docs:   $REPO_ROOT/docs/SETUP.md
-EOF
-      ;;
-    deps-only)
-      cat <<EOF
-Dependencies installed. Next:
-
-  cd $REPO_ROOT
-  ./scripts/setup-ubuntu.sh --mode dev
-  # or
-  ./scripts/setup-ubuntu.sh --mode docker
-
-Docs: $REPO_ROOT/docs/SETUP.md
-EOF
-      ;;
-  esac
+  printf '\n\033[1;32m✓ Cognix setup complete\033[0m\n\n'
+  echo "Repo:  $REPO_ROOT"
+  echo "Mode:  $MODE"
+  print_env_files
 }
 
 main() {
