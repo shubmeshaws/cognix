@@ -47,7 +47,11 @@ function DevAuthBridge({ children }: { children: ReactNode }) {
     retry: 2,
   });
 
-  const identity = { id: DEV_USER_ID, email: "dev@local" };
+  const identity = {
+    id: DEV_USER_ID,
+    email: "dev@local",
+    role: "admin" as const,
+  };
 
   return (
     <AgentTokenContext.Provider value={tokenQuery.data}>

@@ -7,13 +7,16 @@ import { Button } from "@/components/ui/button";
 import { isAuthDisabled } from "@/lib/auth-disabled";
 
 export function UserMenu() {
-  const { data: session } = useSession();
-
   if (isAuthDisabled()) {
     return (
       <span className="text-xs text-muted-foreground">Dev mode (auth off)</span>
     );
   }
+  return <UserMenuSession />;
+}
+
+function UserMenuSession() {
+  const { data: session } = useSession();
 
   const label = session?.user?.email ?? session?.user?.name ?? "Account";
 

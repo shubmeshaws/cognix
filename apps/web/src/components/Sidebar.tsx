@@ -1,8 +1,8 @@
 "use client";
 
-import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useActorIdentity } from "@/components/auth-context";
 import { CognixLogo } from "@/components/brand/CognixLogo";
 import {
   Bell,
@@ -49,7 +49,7 @@ const NAV = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { role } = useActorIdentity();
   const activeClusterId = useClusterStore((s) => s.activeClusterId);
   const setCluster = useClusterStore((s) => s.setCluster);
   const pods = useClusterStore((s) => s.pods);
@@ -78,7 +78,7 @@ export function Sidebar() {
   const clusterLabel = activeCluster?.name ?? (activeClusterId ? "Cluster" : "No cluster");
   const clusterLive = activeCluster?.health.ok ?? false;
   const activeLlm = getActiveLlmDisplay(agentQuery.data);
-  const isAdmin = session?.user?.role === "admin";
+  const isAdmin = role === "admin";
   const navItems = isAdmin
     ? [
         ...NAV,
