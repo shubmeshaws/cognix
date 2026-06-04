@@ -22,6 +22,7 @@ async function fetchDevToken(): Promise<string> {
 const AgentTokenContext = createContext<string | undefined>(undefined);
 const ActorIdentityContext = createContext<{
   id?: string;
+  name?: string | null;
   email: string;
   role?: "admin" | "user";
 }>({ email: "unknown" });
@@ -32,6 +33,7 @@ export function useAgentToken(): string | undefined {
 
 export function useActorIdentity(): {
   id?: string;
+  name?: string | null;
   email: string;
   role?: "admin" | "user";
 } {
@@ -49,6 +51,7 @@ function DevAuthBridge({ children }: { children: ReactNode }) {
 
   const identity = {
     id: DEV_USER_ID,
+    name: "Developer",
     email: "dev@local",
     role: "admin" as const,
   };
@@ -70,6 +73,7 @@ function SessionAuthBridge({ children }: { children: ReactNode }) {
 
   const identity = {
     id: session?.user?.id,
+    name: session?.user?.name,
     email: session?.user?.email ?? "unknown",
     role: session?.user?.role,
   };

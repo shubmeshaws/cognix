@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Sparkles,
@@ -20,12 +20,21 @@ import {
 import { AnimatedVoiceAssistantIcon } from "@/components/meshy/AnimatedVoiceAssistantIcon";
 import { MeshyMessageContent } from "@/components/meshy/MeshyMessageContent";
 import { useClusterStore } from "@/stores/cluster";
+import { useActorIdentity } from "@/components/auth-context";
 import { useAgentToken } from "@/hooks/useAgentToken";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { cn } from "@/lib/utils";
 import { approveHeal, fetchLlmConfig } from "@/lib/api";
+import {
+  buildMeshyVoiceGreeting,
+  buildMeshyWelcomeMarkdown,
+  resolveMeshyDisplayName,
+} from "@/lib/meshy-greeting";
 import { speakMeshyText } from "@/lib/meshy-tts";
-import { meshyLanguageToSpeechRecognitionLang } from "@/lib/meshy-voice-language";
+import {
+  meshyLanguageToSpeechRecognitionLang,
+  type MeshyVoiceLanguage,
+} from "@/lib/meshy-voice-language";
 import { summarizeForVoice } from "@/lib/voice";
 import { mergeTranscriptPartsFrom } from "@/lib/voice-transcript";
 import {
@@ -60,8 +69,6 @@ import {
 import type { LlmConfigResponse } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-const MESHY_VOICE_GREETING =
-  "Hello Sir, I'm Meshy, your Kubernetes assistant. What would you like to know about your cluster?";
 
 interface Message {
   id: string;
@@ -84,22 +91,35 @@ interface VoiceTurn {
   uiCard?: Message["uiCard"];
 }
 
-const MESHY_WELCOME_MESSAGE: Message = {
-  id: "welcome",
-  role: "assistant",
-  content:
-    "Hello Sir! I'm **Meshy**, your Kubernetes assistant. Ask me anything about your cluster — health, pod issues, diagnostics, or general questions.",
-};
+function buildWelcomeMessage(displayName: string): Message {
+  return {
+    id: "welcome",
+    role: "assistant",
+    content: buildMeshyWelcomeMarkdown(displayName),
+  };
+}
 
 export function MeshyChat() {
   const activeClusterId = useClusterStore((s) => s.activeClusterId);
   const token = useAgentToken();
+  const actor = useActorIdentity();
   const { hfToken, useHuggingFace, voiceGender, voiceLanguage } = useMeshy();
+  const displayName = useMemo(
+    () => resolveMeshyDisplayName({ name: actor.name, email: actor.email }),
+    [actor.name, actor.email],
+  );
+  const meshyVoiceGreeting = useCallback(
+    (language: MeshyVoiceLanguage = voiceLanguage) =>
+      buildMeshyVoiceGreeting(displayName, language),
+    [displayName, voiceLanguage],
+  );
   const meshyChatRetention = useSettingsStore((s) => s.meshyChatRetention);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const settingsHydrated = useSettingsStore((s) => s.hydrated);
 
-  const [messages, setMessages] = useState<Message[]>([MESHY_WELCOME_MESSAGE]);
+  const [messages, setMessages] = useState<Message[]>(() => [
+    buildWelcomeMessage(displayName),
+  ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [llmConfig, setLlmConfig] = useState<LlmConfigResponse | null>(null);
@@ -164,8 +184,18 @@ export function MeshyChat() {
   }, [messages, loading]);
 
   useEffect(() => {
+    setMessages((prev) => {
+      const welcomeOnly = prev.length === 1 && prev[0]?.id === "welcome";
+      if (!welcomeOnly) return prev;
+      const next = buildWelcomeMessage(displayName);
+      if (prev[0]?.content === next.content) return prev;
+      return [next];
+    });
+  }, [displayName]);
+
+  useEffect(() => {
     if (!activeClusterId) {
-      setMessages([MESHY_WELCOME_MESSAGE]);
+      setMessages([buildWelcomeMessage(displayName)]);
       return;
     }
 
@@ -175,8 +205,13 @@ export function MeshyChat() {
       return;
     }
 
-    setMessages([MESHY_WELCOME_MESSAGE]);
-  }, [activeClusterId, meshyChatRetention.value, meshyChatRetention.unit]);
+    setMessages([buildWelcomeMessage(displayName)]);
+  }, [
+    activeClusterId,
+    displayName,
+    meshyChatRetention.value,
+    meshyChatRetention.unit,
+  ]);
 
   useEffect(() => {
     if (!activeClusterId) return;
@@ -621,7 +656,7 @@ export function MeshyChat() {
     isFirstVoiceTurnRef.current = true;
     await startVadSession();
     const greetingTurn = voiceTurnGenerationRef.current;
-    await speakText(MESHY_VOICE_GREETING, greetingTurn);
+    await speakText(meshyVoiceGreeting(), greetingTurn);
     isFirstVoiceTurnRef.current = false;
   };
 
@@ -1028,7 +1063,7 @@ export function MeshyChat() {
     if (activeClusterId) {
       clearMeshyChatMessages(activeClusterId);
     }
-    setMessages([MESHY_WELCOME_MESSAGE]);
+    setMessages([buildWelcomeMessage(displayName)]);
     setShowClearConfirm(false);
   };
 
