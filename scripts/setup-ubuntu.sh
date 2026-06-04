@@ -186,6 +186,50 @@ compose_cmd() {
   fi
 }
 
+run_with_elevation() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+node_is_system_wide() {
+  local nodepath
+  nodepath="$(command -v node 2>/dev/null || true)"
+  [[ -n "$nodepath" && "$nodepath" == /usr/* ]]
+}
+
+enable_corepack_pnpm() {
+  if command -v pnpm >/dev/null 2>&1; then
+    local pv
+    pv="$(pnpm -v 2>/dev/null || true)"
+    if [[ "$pv" == 9.* ]]; then
+      log "pnpm already installed: $pv"
+      return 0
+    fi
+    warn "pnpm $pv found; installing pnpm@9.15.0"
+  fi
+
+  if node_is_system_wide; then
+    log "System-wide Node.js (/usr) — enabling Corepack with sudo (avoids EACCES)…"
+    if ! run_with_elevation corepack enable; then
+      warn "corepack enable failed; trying npm -g…"
+      run_with_elevation npm install -g pnpm@9.15.0 || die "Could not install pnpm. Run: sudo npm install -g pnpm@9.15.0"
+      log "pnpm $(pnpm -v)"
+      return 0
+    fi
+    run_with_elevation corepack prepare pnpm@9.15.0 --activate
+  else
+    log "Enabling Corepack and pnpm 9.15.0…"
+    corepack enable
+    corepack prepare pnpm@9.15.0 --activate
+  fi
+
+  command -v pnpm >/dev/null 2>&1 || die "pnpm not found. Run: sudo corepack enable && sudo corepack prepare pnpm@9.15.0 --activate"
+  log "pnpm $(pnpm -v)"
+}
+
 install_node_pnpm() {
   if command -v node >/dev/null 2>&1; then
     local major
@@ -201,13 +245,10 @@ install_node_pnpm() {
   fi
 
   if [[ "$(id -u)" -eq 0 ]]; then
-    die "Run the remainder of this script as user $RUN_USER, not root."
+    die "Run the remainder of this script as a normal user (not root). Example: ./scripts/setup-ubuntu.sh"
   fi
 
-  log "Enabling Corepack and pnpm 9.15.0…"
-  corepack enable
-  corepack prepare pnpm@9.15.0 --activate
-  log "pnpm $(pnpm -v)"
+  enable_corepack_pnpm
 }
 
 install_node_20() {
@@ -472,6 +513,11 @@ EOF
 }
 
 main() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    warn "Do not run the full script as root. Use: ./scripts/setup-ubuntu.sh (sudo is used only where needed)."
+    die "Re-run as your normal user, e.g. ubuntu@your-server"
+  fi
+
   log "Cognix Ubuntu setup (mode=$MODE)"
   check_os
   install_system_packages

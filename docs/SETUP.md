@@ -551,6 +551,7 @@ make db:push
 
 | Problem | What to check |
 |---------|----------------|
+| `corepack` / `pnpm` EACCES on Ubuntu | System Node installs to `/usr` — run: `sudo corepack enable && sudo corepack prepare pnpm@9.15.0 --activate` (or re-run `./scripts/setup-ubuntu.sh`) |
 | Agent won't start | `DATABASE_URL` correct? Postgres running? `JWT_SECRET` ≥ 32 chars? |
 | Web can't reach agent | `NEXT_PUBLIC_API_URL` must match where agent is reachable **from the browser** |
 | Meshy LLM errors | **Setup** page → Ollama / LLM check; **Settings → Agent → Apply** |
