@@ -551,6 +551,17 @@ ensure_web_auth_env() {
   fi
 
   patch_web_env_for_public_access
+  ensure_agent_internal_url
+}
+
+ensure_agent_internal_url() {
+  local web_env="$REPO_ROOT/apps/web/.env"
+  [[ -f "$web_env" ]] || return 0
+  if grep -qE '^AGENT_INTERNAL_URL=' "$web_env" 2>/dev/null; then
+    sed_inplace 's|^AGENT_INTERNAL_URL=.*|AGENT_INTERNAL_URL=http://127.0.0.1:'"${AGENT_PORT}"'|' "$web_env"
+  else
+    echo "AGENT_INTERNAL_URL=http://127.0.0.1:${AGENT_PORT}" >>"$web_env"
+  fi
 }
 
 resolve_hosting_domains() {

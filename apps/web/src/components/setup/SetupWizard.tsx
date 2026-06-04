@@ -37,7 +37,12 @@ export function SetupWizard() {
     } catch (err) {
       setDbChecked(true);
       setDbOk(false);
-      setDbDetail(err instanceof Error ? err.message : "Database check failed");
+      const msg = err instanceof Error ? err.message : "Database check failed";
+      setDbDetail(
+        msg === "Failed to fetch"
+          ? "Cannot reach /api/setup on the web app. Restart pnpm dev:web after git pull, and ensure pnpm dev:agent is running."
+          : msg,
+      );
     } finally {
       setCheckingDb(false);
     }
