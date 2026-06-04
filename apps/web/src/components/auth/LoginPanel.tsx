@@ -7,6 +7,7 @@ import { LoginForm } from "@/components/auth/LoginForm";
 import { SetupAdminPanel, type GeneratedAdminCreds } from "@/components/auth/SetupAdminPanel";
 import { SsoLoginButtons } from "@/components/auth/SsoLoginButton";
 import { Button } from "@/components/ui/button";
+import { copyTextToClipboard } from "@/lib/copy-to-clipboard";
 import type { SsoProviderId } from "@/types/api";
 
 interface LoginPanelProps {
@@ -27,15 +28,18 @@ function CopyButton({
   className?: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(text);
+    setFailed(false);
+    const ok = await copyTextToClipboard(text);
+    if (ok) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* clipboard unavailable */
+      return;
     }
+    setFailed(true);
+    window.setTimeout(() => setFailed(false), 3000);
   }
 
   return (
@@ -45,9 +49,10 @@ function CopyButton({
       size="sm"
       className={className}
       onClick={() => void handleCopy()}
+      title={failed ? "Select the text and press Ctrl+C (Cmd+C on Mac)" : undefined}
     >
       {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-      {copied ? "Copied" : label}
+      {copied ? "Copied" : failed ? "Select + Ctrl+C" : label}
     </Button>
   );
 }
@@ -92,6 +97,8 @@ function GeneratedCredsBanner({ creds }: { creds: GeneratedAdminCreds }) {
       </dl>
       <p className="mt-4 text-sm text-muted-foreground">
         Sign in below. You will be asked to set a new password on first login.
+        If Copy does not work over HTTP, select the password and press{" "}
+        <kbd className="rounded border px-1 text-xs">Ctrl+C</kbd>.
       </p>
     </div>
   );

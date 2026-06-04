@@ -666,9 +666,93 @@ ENV_C_BOLD_MAGENTA=$'\033[1;35m'
 ENV_C_BOLD_GREEN=$'\033[1;32m'
 ENV_C_BOLD_BLUE=$'\033[1;34m'
 ENV_C_YELLOW=$'\033[0;33m'
+ENV_C_BOLD_WHITE=$'\033[1;37m'
+ENV_C_CYAN=$'\033[0;36m'
 
 env_output_use_color() {
   [[ -t 1 ]]
+}
+
+print_author_banner() {
+  local use_color="$1"
+  if [[ "$use_color" == true ]]; then
+    printf '\n%s╔══════════════════════════════════════════════════════════════════╗%s\n' "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET"
+    printf '%s║%s  %sCognix — Kubernetes Healing Agent%s                              %s║%s\n' \
+      "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET" "$ENV_C_BOLD_WHITE" "$ENV_C_RESET" "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET"
+    printf '%s╠══════════════════════════════════════════════════════════════════╣%s\n' "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET"
+    printf '%s║%s  %sAuthor:%s     Shubham Meshram                                      %s║%s\n' \
+      "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET" "$ENV_C_DIM" "$ENV_C_RESET" "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET"
+    printf '%s║%s  %sEmail:%s      shubmeshaws@gmail.com                               %s║%s\n' \
+      "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET" "$ENV_C_DIM" "$ENV_C_RESET" "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET"
+    printf '%s║%s  %sPortfolio:%s  https://shubhammeshram.com                          %s║%s\n' \
+      "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET" "$ENV_C_DIM" "$ENV_C_RESET" "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET"
+    printf '%s║%s  %sLinkedIn:%s   https://www.linkedin.com/in/iamshubhammeshram/     %s║%s\n' \
+      "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET" "$ENV_C_DIM" "$ENV_C_RESET" "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET"
+    printf '%s╚══════════════════════════════════════════════════════════════════╝%s\n' "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET"
+  else
+    echo ""
+    echo "================================================================================"
+    echo "Cognix — Author: Shubham Meshram"
+    echo "Email:      shubmeshaws@gmail.com"
+    echo "Portfolio:  https://shubhammeshram.com"
+    echo "LinkedIn:   https://www.linkedin.com/in/iamshubhammeshram/"
+    echo "================================================================================"
+  fi
+}
+
+print_api_health_checks() {
+  local use_color="$1"
+  local agent_ok=false web_ok=false db_ok=false
+  local agent_body web_code
+
+  if [[ "$use_color" == true ]]; then
+    printf '\n%s╔══════════════════════════════════════════════════════════════════╗%s\n' "$ENV_C_BOLD_BLUE" "$ENV_C_RESET"
+    printf '%s║  TEST API (run after: pnpm dev:agent + pnpm dev:web)               ║%s\n' "$ENV_C_BOLD_BLUE" "$ENV_C_RESET"
+    printf '%s╚══════════════════════════════════════════════════════════════════╝%s\n' "$ENV_C_BOLD_BLUE" "$ENV_C_RESET"
+  else
+    echo ""
+    echo "================================================================================"
+    echo "TEST API — run after pnpm dev:agent and pnpm dev:web"
+    echo "================================================================================"
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    agent_body="$(curl -sf --connect-timeout 3 "http://127.0.0.1:${AGENT_PORT}/health" 2>/dev/null || true)"
+    [[ "$agent_body" == *ok* ]] && agent_ok=true
+    web_code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 -X POST \
+      "http://127.0.0.1:${WEB_PORT}/api/setup/check-db" 2>/dev/null || echo "000")"
+    [[ "$web_code" == "200" ]] && web_ok=true
+    db_ok="$web_ok"
+  fi
+
+  if [[ "$use_color" == true ]]; then
+    printf '  %s# Agent (direct)%s\n' "$ENV_C_DIM" "$ENV_C_RESET"
+    printf '  curl -s http://127.0.0.1:%s/health\n' "$AGENT_PORT"
+    if [[ "$agent_ok" == true ]]; then
+      printf '  %s→ OK%s %s\n' "$ENV_C_BOLD_GREEN" "$ENV_C_RESET" "$agent_body"
+    else
+      printf '  %s→ not running — start: pnpm dev:agent%s\n' "$ENV_C_YELLOW" "$ENV_C_RESET"
+    fi
+    printf '\n  %s# Web → agent proxy (setup / login / admin creds use this)%s\n' "$ENV_C_DIM" "$ENV_C_RESET"
+    printf '  curl -s -X POST http://127.0.0.1:%s/api/setup/check-db\n' "$WEB_PORT"
+    if [[ "$db_ok" == true ]]; then
+      printf '  %s→ OK%s (DB connection via proxy)\n' "$ENV_C_BOLD_GREEN" "$ENV_C_RESET"
+    else
+      printf '  %s→ web not running or proxy missing — start: pnpm dev:web -- -H 0.0.0.0%s\n' "$ENV_C_YELLOW" "$ENV_C_RESET"
+    fi
+    printf '  curl -s http://127.0.0.1:%s/api/agent/auth/setup-status\n' "$WEB_PORT"
+    printf '  curl -s -X POST http://127.0.0.1:%s/api/agent/auth/bootstrap-admin\n' "$WEB_PORT"
+    printf '\n  %s# From browser (security group: TCP %s, %s)%s\n' "$ENV_C_DIM" "$WEB_PORT" "$AGENT_PORT" "$ENV_C_RESET"
+    printf '  http://%s:%s/setup  →  http://%s:%s/login\n' \
+      "$SERVER_PUBLIC_IP" "$WEB_PORT" "$SERVER_PUBLIC_IP" "$WEB_PORT"
+  else
+    echo "curl -s http://127.0.0.1:${AGENT_PORT}/health"
+    [[ "$agent_ok" == true ]] && echo "→ OK $agent_body" || echo "→ not running (pnpm dev:agent)"
+    echo "curl -s -X POST http://127.0.0.1:${WEB_PORT}/api/setup/check-db"
+    [[ "$db_ok" == true ]] && echo "→ OK" || echo "→ start pnpm dev:web -- -H 0.0.0.0"
+    echo "curl -s http://127.0.0.1:${WEB_PORT}/api/agent/auth/setup-status"
+    echo "http://${SERVER_PUBLIC_IP}:${WEB_PORT}/setup"
+  fi
 }
 
 # Print one required KEY=value (actual value from disk).
@@ -715,7 +799,7 @@ web_required_keys() {
     printf '%s\n' NEXT_PUBLIC_API_URL JWT_SECRET NEXT_PUBLIC_AUTH_DISABLED
   else
     printf '%s\n' \
-      NEXT_PUBLIC_AUTH_DISABLED NEXT_PUBLIC_API_URL JWT_SECRET \
+      NEXT_PUBLIC_AUTH_DISABLED AGENT_INTERNAL_URL NEXT_PUBLIC_API_URL JWT_SECRET \
       NEXT_PUBLIC_APP_URL NEXTAUTH_SECRET NEXTAUTH_URL
   fi
 }
@@ -822,6 +906,8 @@ emit_all_required_env() {
   local root_web="$REPO_ROOT/.env.web"
 
   resolve_server_ips
+  print_author_banner "$use_color"
+  print_api_health_checks "$use_color"
   emit_server_and_auth_block "$use_color"
 
   if [[ "$use_color" == true ]]; then
@@ -1319,6 +1405,7 @@ main() {
     die "Re-run as your normal user, e.g. ubuntu@your-server"
   fi
 
+  env_output_use_color && print_author_banner true || print_author_banner false
   log "Cognix Ubuntu setup (mode=$MODE)"
   check_os
   install_system_packages

@@ -9,8 +9,64 @@
 </p>
 
 <p align="center">
-  📖 <a href="docs/SETUP.md"><strong>Full setup guide</strong></a> (EC2, Docker, Kubernetes) — step-by-step for beginners, env file reference, copy-paste commands
+  📖 <a href="docs/SETUP.md"><strong>Full setup guide</strong></a> · <a href="docs/HOSTING.md"><strong>Hosting (Nginx + SSL)</strong></a>
 </p>
+
+---
+
+## Quick Setup (Ubuntu 24.04+ / EC2)
+
+Automated installer: **`scripts/setup-ubuntu.sh`** — installs Docker, Node 20, pnpm, Postgres, Redis, Ollama, applies the DB schema, writes env files, and prints copy-paste values + API test commands.
+
+### Prerequisites
+
+| Requirement | Details |
+|-------------|---------|
+| **OS** | Ubuntu **24.04+** (22.04 often works) |
+| **Access** | SSH as a normal user (not root) |
+| **Firewall — development** | Inbound **TCP 3000** (web UI), **TCP 3001** (agent API for dashboard), **22** (SSH) |
+| **Firewall — production** | After **Nginx + domain + SSL**: inbound **80** and **443** only (app listens on localhost) |
+
+### Run the script
+
+```bash
+git clone https://github.com/shubmeshaws/cognix.git cognix
+cd cognix
+chmod +x scripts/setup-ubuntu.sh
+./scripts/setup-ubuntu.sh -y
+```
+
+**Production build + deploy configs:**
+
+```bash
+./scripts/setup-ubuntu.sh --mode production -y --domain app.yourdomain.com
+```
+
+See **[docs/HOSTING.md](docs/HOSTING.md)** for Nginx, Certbot SSL, and systemd/PM2.
+
+### After the script
+
+1. Review **`SETUP_COPY_PASTE.txt`** (and terminal output): author info, **API test curls**, required **env** values.
+2. Start the app (two terminals on the server):
+
+```bash
+cd cognix
+pnpm dev:agent
+# another terminal:
+pnpm dev:web -- -H 0.0.0.0
+```
+
+3. Open **`http://<your-server-public-ip>:3000/setup`** → check DB → create schema → **`/login`** → generate admin credentials → sign in.
+
+**Important env (written by the script):**
+
+- `apps/web/.env` — `AGENT_INTERNAL_URL=http://127.0.0.1:3001` (setup/login proxy on same host)
+- `NEXT_PUBLIC_AUTH_DISABLED=false` (full setup wizard + login)
+- `JWT_SECRET` — same value in `apps/agent/.env` and `apps/web/.env`
+
+Use `--dev-auth-off` only if you want to skip login and go straight to the dashboard.
+
+---
 
 ## Application
 
@@ -727,5 +783,17 @@ More: [docs/SETUP.md — Troubleshooting](docs/SETUP.md#troubleshooting)
 ## Links
 
 - [Complete setup guide](docs/SETUP.md)
+- [Hosting (Nginx, SSL, systemd/PM2)](docs/HOSTING.md)
 - [Helm chart README](helm/cognix/README.md)
 - [Ollama](https://ollama.com/) · [Docker](https://docs.docker.com/get-docker/) · [Helm](https://helm.sh/)
+
+---
+
+## Collaborate
+
+Questions, feedback, or contributions — reach out:
+
+**Shubham Meshram** — [shubmeshaws@gmail.com](mailto:shubmeshaws@gmail.com)
+
+- Portfolio: [shubhammeshram.com](https://shubhammeshram.com)
+- LinkedIn: [linkedin.com/in/iamshubhammeshram](https://www.linkedin.com/in/iamshubhammeshram/)
