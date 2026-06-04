@@ -21,6 +21,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MODE="dev"          # dev | production | docker | deps-only
 SKIP_OLLAMA=false
 START_APPS=false
+DEV_AUTH_OFF=false
 INSTALL_NGINX=false
 DOMAIN=""
 API_DOMAIN=""
@@ -36,6 +37,8 @@ ASSUME_YES=false
 TARGET_DIR=""
 LOG_DIR_NAME=".kubehealer"
 DEPLOY_DIR_NAME=".kubehealer/deploy"
+SERVER_PRIVATE_IP=""
+SERVER_PUBLIC_IP=""
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!>\033[0m %s\n' "$*"; }
@@ -50,6 +53,7 @@ Options:
   --mode MODE        dev (default) | production | docker | deps-only
   --skip-ollama      Do not start or pull Ollama (use cloud LLMs in Settings)
   --start            Start agent/web in background (dev only; use PM2/systemd for hosting)
+  --dev-auth-off     Skip login: set NEXT_PUBLIC_AUTH_DISABLED=true (dashboard only, no setup wizard)
   --with-nginx       apt install nginx (configure using generated files + docs/HOSTING.md)
   --domain HOST      App hostname for env + deploy configs (e.g. app.example.com)
   --api-domain HOST  API hostname (default: api.<domain> or api.CHANGE_ME.example.com)
@@ -80,6 +84,7 @@ while [[ $# -gt 0 ]]; do
     --mode) MODE="${2:?}"; shift 2 ;;
     --skip-ollama) SKIP_OLLAMA=true; shift ;;
     --start) START_APPS=true; shift ;;
+    --dev-auth-off) DEV_AUTH_OFF=true; shift ;;
     --with-nginx) INSTALL_NGINX=true; shift ;;
     --domain) DOMAIN="${2:?}"; shift 2 ;;
     --api-domain) API_DOMAIN="${2:?}"; shift 2 ;;
@@ -439,7 +444,113 @@ configure_env_files() {
   fi
 
   chmod +x "$REPO_ROOT/scripts/ollama-pull.sh" 2>/dev/null || true
+  ensure_web_auth_env
   patch_env_for_hosting
+}
+
+resolve_server_ips() {
+  SERVER_PRIVATE_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || echo '127.0.0.1')"
+  SERVER_PUBLIC_IP=""
+  if command -v curl >/dev/null 2>&1; then
+    SERVER_PUBLIC_IP="$(
+      curl -sf --connect-timeout 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || true
+    )"
+    if [[ -z "$SERVER_PUBLIC_IP" ]]; then
+      SERVER_PUBLIC_IP="$(
+        curl -sf --connect-timeout 3 https://checkip.amazonaws.com 2>/dev/null | tr -d '[:space:]' || true
+      )"
+    fi
+  fi
+  if [[ -z "$SERVER_PUBLIC_IP" ]]; then
+    SERVER_PUBLIC_IP="$SERVER_PRIVATE_IP"
+  fi
+}
+
+ip_is_private() {
+  local ip="$1"
+  [[ "$ip" =~ ^127\. ]] && return 0
+  [[ "$ip" =~ ^10\. ]] && return 0
+  [[ "$ip" =~ ^192\.168\. ]] && return 0
+  [[ "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && return 0
+  return 1
+}
+
+# Point web env at EC2 public IP so browser + NextAuth work from your laptop.
+patch_web_env_for_public_access() {
+  local web_env="$REPO_ROOT/apps/web/.env"
+  local ip="$SERVER_PUBLIC_IP"
+  [[ -f "$web_env" ]] || return 0
+  [[ -n "$DOMAIN" ]] && return 0
+  [[ "$DEV_AUTH_OFF" == true ]] && return 0
+  ip_is_private "$ip" && return 0
+
+  local api_url="http://${ip}:${AGENT_PORT}"
+  local app_url="http://${ip}:${WEB_PORT}"
+  log "Using EC2 public IP in apps/web/.env: ${ip}"
+
+  if grep -qE '^NEXT_PUBLIC_API_URL=' "$web_env" 2>/dev/null; then
+    sed_inplace "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=${api_url}|" "$web_env"
+  else
+    echo "NEXT_PUBLIC_API_URL=${api_url}" >>"$web_env"
+  fi
+  if grep -qE '^NEXT_PUBLIC_APP_URL=' "$web_env" 2>/dev/null; then
+    sed_inplace "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=${app_url}|" "$web_env"
+  else
+    echo "NEXT_PUBLIC_APP_URL=${app_url}" >>"$web_env"
+  fi
+  if grep -qE '^NEXTAUTH_URL=' "$web_env" 2>/dev/null; then
+    sed_inplace "s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=${app_url}|" "$web_env"
+  fi
+}
+
+# Full first-run flow (/, /setup, /login, admin creds) needs auth enabled + NextAuth secrets.
+ensure_web_auth_env() {
+  resolve_server_ips
+  local web_env="$REPO_ROOT/apps/web/.env"
+  [[ -f "$web_env" ]] || return 0
+
+  local nauth app_url
+  app_url="http://localhost:${WEB_PORT}"
+
+  if [[ "$DEV_AUTH_OFF" == true ]]; then
+    log "Dev auth-off: NEXT_PUBLIC_AUTH_DISABLED=true (skips setup wizard and login)"
+    if grep -qE '^NEXT_PUBLIC_AUTH_DISABLED=' "$web_env" 2>/dev/null; then
+      sed_inplace 's/^NEXT_PUBLIC_AUTH_DISABLED=.*/NEXT_PUBLIC_AUTH_DISABLED=true/' "$web_env"
+    else
+      echo "NEXT_PUBLIC_AUTH_DISABLED=true" >>"$web_env"
+    fi
+    return 0
+  fi
+
+  log "Auth enabled for setup wizard + login (use --dev-auth-off to skip)"
+  if grep -qE '^NEXT_PUBLIC_AUTH_DISABLED=' "$web_env" 2>/dev/null; then
+    sed_inplace 's/^NEXT_PUBLIC_AUTH_DISABLED=.*/NEXT_PUBLIC_AUTH_DISABLED=false/' "$web_env"
+  else
+    echo "NEXT_PUBLIC_AUTH_DISABLED=false" >>"$web_env"
+  fi
+
+  if [[ -n "$DOMAIN" ]]; then
+    app_url="https://${HOSTING_APP_DOMAIN}"
+  fi
+
+  nauth="$(env_file_get "$web_env" NEXTAUTH_SECRET)"
+  if env_needs_secret "$nauth"; then
+    nauth="$(generate_secret)"
+    if grep -qE '^NEXTAUTH_SECRET=' "$web_env" 2>/dev/null; then
+      sed_inplace "s|^NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=${nauth}|" "$web_env"
+    else
+      echo "NEXTAUTH_SECRET=${nauth}" >>"$web_env"
+    fi
+    log "Generated NEXTAUTH_SECRET in apps/web/.env"
+  fi
+
+  if grep -qE '^NEXTAUTH_URL=' "$web_env" 2>/dev/null; then
+    sed_inplace "s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=${app_url}|" "$web_env"
+  else
+    echo "NEXTAUTH_URL=${app_url}" >>"$web_env"
+  fi
+
+  patch_web_env_for_public_access
 }
 
 resolve_hosting_domains() {
@@ -489,23 +600,7 @@ patch_env_for_hosting() {
   else
     echo "NEXT_PUBLIC_APP_URL=${app_url}" >>"$web_env"
   fi
-  if grep -qE '^NEXT_PUBLIC_AUTH_DISABLED=' "$web_env"; then
-    sed_inplace 's/^NEXT_PUBLIC_AUTH_DISABLED=.*/NEXT_PUBLIC_AUTH_DISABLED=false/' "$web_env"
-  fi
-  nauth="$(env_file_get "$web_env" NEXTAUTH_SECRET)"
-  if env_needs_secret "$nauth"; then
-    nauth="$(generate_secret)"
-    if grep -qE '^NEXTAUTH_SECRET=' "$web_env" 2>/dev/null; then
-      sed_inplace "s|^NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=${nauth}|" "$web_env"
-    else
-      echo "NEXTAUTH_SECRET=${nauth}" >>"$web_env"
-    fi
-  fi
-  if grep -qE '^NEXTAUTH_URL=' "$web_env"; then
-    sed_inplace "s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=${app_url}|" "$web_env"
-  else
-    echo "NEXTAUTH_URL=${app_url}" >>"$web_env"
-  fi
+  # Auth flags/secrets handled in ensure_web_auth_env (also runs for --domain)
 }
 
 install_nginx_if_requested() {
@@ -609,7 +704,8 @@ web_required_keys() {
     printf '%s\n' NEXT_PUBLIC_API_URL JWT_SECRET NEXT_PUBLIC_AUTH_DISABLED
   else
     printf '%s\n' \
-      NEXT_PUBLIC_API_URL JWT_SECRET NEXT_PUBLIC_APP_URL NEXTAUTH_SECRET NEXTAUTH_URL
+      NEXT_PUBLIC_AUTH_DISABLED NEXT_PUBLIC_API_URL JWT_SECRET \
+      NEXT_PUBLIC_APP_URL NEXTAUTH_SECRET NEXTAUTH_URL
   fi
 }
 
@@ -642,6 +738,71 @@ emit_required_env_block() {
   done < <("$keys_fn" "$file")
 }
 
+emit_server_and_auth_block() {
+  local use_color="$1"
+  local web_env="$REPO_ROOT/apps/web/.env"
+  local agent_env="$REPO_ROOT/apps/agent/.env"
+  local pub="$SERVER_PUBLIC_IP" priv="$SERVER_PRIVATE_IP"
+  local key value
+
+  resolve_server_ips
+
+  if [[ "$use_color" == true ]]; then
+    printf '\n%s╔══════════════════════════════════════════════════════════════════╗%s\n' "$ENV_C_BOLD_GREEN" "$ENV_C_RESET"
+    printf '%s║  EC2 / SERVER ACCESS + AUTH (use these URLs from your browser)   ║%s\n' "$ENV_C_BOLD_GREEN" "$ENV_C_RESET"
+    printf '%s╚══════════════════════════════════════════════════════════════════╝%s\n' "$ENV_C_BOLD_GREEN" "$ENV_C_RESET"
+    printf '  %sPublic IP:%s   %s%s%s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$ENV_C_BOLD" "$pub" "$ENV_C_RESET"
+    printf '  %sPrivate IP:%s %s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$priv"
+    if [[ "$pub" != "$priv" ]]; then
+      printf '  %sSetup:%s      %shttp://%s:%s/setup%s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$ENV_C_GREEN" "$pub" "$WEB_PORT" "$ENV_C_RESET"
+      printf '  %sLogin:%s      %shttp://%s:%s/login%s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$ENV_C_GREEN" "$pub" "$WEB_PORT" "$ENV_C_RESET"
+      printf '  %sAPI health:%s %shttp://%s:%s/health%s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$ENV_C_GREEN" "$pub" "$AGENT_PORT" "$ENV_C_RESET"
+    fi
+    printf '\n  %sAuth — apps/web/.env (required for setup wizard + login):%s\n' "$ENV_C_BOLD_YELLOW" "$ENV_C_RESET"
+  else
+    echo ""
+    echo "================================================================================"
+    echo "EC2 / SERVER ACCESS + AUTH"
+    echo "================================================================================"
+    echo "Public IP:   $pub"
+    echo "Private IP:  $priv"
+    if [[ "$pub" != "$priv" ]]; then
+      echo "Setup:       http://${pub}:${WEB_PORT}/setup"
+      echo "Login:       http://${pub}:${WEB_PORT}/login"
+      echo "API health:  http://${pub}:${AGENT_PORT}/health"
+    fi
+    echo ""
+    echo "# Auth — apps/web/.env (setup wizard + login)"
+  fi
+
+  if [[ -f "$web_env" ]]; then
+    while IFS= read -r key; do
+      [[ -n "$key" ]] || continue
+      value="$(env_file_get "$web_env" "$key")"
+      env_print_kv "$key" "$value" "$use_color"
+    done < <(web_required_keys "$web_env")
+    if [[ "$use_color" == true ]]; then
+      printf '\n  %sAgent — apps/agent/.env (JWT must match web):%s\n' "$ENV_C_BOLD_YELLOW" "$ENV_C_RESET"
+    else
+      echo ""
+      echo "# Agent — apps/agent/.env (JWT must match web)"
+    fi
+    value="$(env_file_get "$agent_env" JWT_SECRET)"
+    env_print_kv "JWT_SECRET" "$value" "$use_color"
+  elif [[ "$use_color" == true ]]; then
+    printf '  %s(apps/web/.env not found)%s\n' "$ENV_C_DIM" "$ENV_C_RESET"
+  else
+    echo "# (apps/web/.env not found)"
+  fi
+
+  if [[ "$DEV_AUTH_OFF" == true && "$use_color" == true ]]; then
+    printf '\n  %sNote:%s --dev-auth-off skips login; set NEXT_PUBLIC_AUTH_DISABLED=false for full /setup flow.%s\n' \
+      "$ENV_C_YELLOW" "$ENV_C_RESET" "$ENV_C_RESET"
+  elif [[ "$DEV_AUTH_OFF" == true ]]; then
+    echo "# Note: --dev-auth-off skips login; set NEXT_PUBLIC_AUTH_DISABLED=false for /setup flow."
+  fi
+}
+
 emit_all_required_env() {
   local use_color="$1"
   local agent_env="$REPO_ROOT/apps/agent/.env"
@@ -649,14 +810,17 @@ emit_all_required_env() {
   local root_env="$REPO_ROOT/.env"
   local root_web="$REPO_ROOT/.env.web"
 
+  resolve_server_ips
+  emit_server_and_auth_block "$use_color"
+
   if [[ "$use_color" == true ]]; then
     printf '\n%s╔══════════════════════════════════════════════════════════════════╗%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_RESET"
-    printf '%s║  REQUIRED ENV (copy values into your .env files)                 ║%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_RESET"
+    printf '%s║  ALL REQUIRED ENV (on disk — agent + web)                        ║%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_RESET"
     printf '%s╚══════════════════════════════════════════════════════════════════╝%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_RESET"
   else
     echo ""
     echo "================================================================================"
-    echo "REQUIRED ENV VARIABLES (actual values from this installation)"
+    echo "ALL REQUIRED ENV (on disk — agent + web)"
     echo "================================================================================"
   fi
 
@@ -837,13 +1001,16 @@ steps_print_heading() {
 }
 
 print_setup_context() {
-  local ip="$1" use_color="$2"
+  local use_color="$1"
+  resolve_server_ips
   resolve_hosting_domains
   steps_print_banner "SETUP SUMMARY" "$use_color"
   if [[ "$use_color" == true ]]; then
     printf '  %sMode:%s          %s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$MODE"
     printf '  %sRepo:%s          %s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$REPO_ROOT"
-    printf '  %sServer IP:%s     %s  (LAN access)\n' "$ENV_C_DIM" "$ENV_C_RESET" "$ip"
+    printf '  %sPublic IP:%s     %s%s%s  (open in browser)\n' \
+      "$ENV_C_DIM" "$ENV_C_RESET" "$ENV_C_BOLD" "$SERVER_PUBLIC_IP" "$ENV_C_RESET"
+    printf '  %sPrivate IP:%s   %s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$SERVER_PRIVATE_IP"
     if [[ -n "$DOMAIN" ]]; then
       printf '  %sApp domain:%s    https://%s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$HOSTING_APP_DOMAIN"
       printf '  %sAPI domain:%s    https://%s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$HOSTING_API_DOMAIN"
@@ -855,7 +1022,8 @@ print_setup_context() {
   else
     printf 'Mode:       %s\n' "$MODE"
     printf 'Repo:       %s\n' "$REPO_ROOT"
-    printf 'Server IP:  %s\n' "$ip"
+    printf 'Public IP:  %s\n' "$SERVER_PUBLIC_IP"
+    printf 'Private IP: %s\n' "$SERVER_PRIVATE_IP"
     if [[ -n "$DOMAIN" ]]; then
       printf 'App domain: https://%s\n' "$HOSTING_APP_DOMAIN"
       printf 'API domain: https://%s\n' "$HOSTING_API_DOMAIN"
@@ -870,8 +1038,8 @@ print_development_steps() {
   local ip="$1" use_color="$2"
   steps_print_heading "DEVELOPMENT — local testing (hot reload, no Nginx)" "$ENV_C_BOLD_BLUE" "$use_color"
   cat <<EOF
-When to use: Day-to-day dev on this machine or EC2 lab. Login is usually off
-             (NEXT_PUBLIC_AUTH_DISABLED=true). No SSL required.
+When to use: Quick coding with hot reload. Default install uses full setup at /
+             (wizard + login). Use --dev-auth-off only to skip straight to dashboard.
 
 1) Env files (you already copied these):
    ${REPO_ROOT}/apps/agent/.env
@@ -890,9 +1058,11 @@ When to use: Day-to-day dev on this machine or EC2 lab. Login is usually off
    Option B — background (quick smoke test):
    cd ${REPO_ROOT} && ./scripts/setup-ubuntu.sh --start -y
 
-4) Open in browser:
-   http://127.0.0.1:${WEB_PORT}
-   http://${ip}:${WEB_PORT}     # EC2: allow inbound TCP ${WEB_PORT} and ${AGENT_PORT} in security group
+4) Open first-run setup (auth on by default):
+   http://127.0.0.1:${WEB_PORT}/setup
+   http://${ip}:${WEB_PORT}/setup
+   Flow: welcome → Check DB → Create schema → /login → generate admin creds → sign in
+   (If you see "Dev mode (auth off)", set NEXT_PUBLIC_AUTH_DISABLED=false in apps/web/.env and restart web.)
 
 5) EC2 cannot connect from internet?
    ss -tlnp | grep -E ':${WEB_PORT}|:${AGENT_PORT}'   # must show 0.0.0.0 not 127.0.0.1
@@ -1050,17 +1220,16 @@ print_which_path_hint() {
 
 print_next_steps() {
   local use_color="${1:-false}"
-  local ip
-  ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo '127.0.0.1')"
+  resolve_server_ips
 
   steps_print_banner "WHAT TO DO NEXT" "$use_color"
-  print_setup_context "$ip" "$use_color"
+  print_setup_context "$use_color"
 
   if [[ "$MODE" == "docker" ]]; then
-    print_docker_steps "$ip" "$use_color"
+    print_docker_steps "$SERVER_PUBLIC_IP" "$use_color"
     print_production_steps "$use_color"
   else
-    print_development_steps "$ip" "$use_color"
+    print_development_steps "$SERVER_PUBLIC_IP" "$use_color"
     print_production_steps "$use_color"
   fi
 
@@ -1071,6 +1240,7 @@ print_env_files() {
   local out_file="$REPO_ROOT/SETUP_COPY_PASTE.txt"
   local use_color=false
   env_output_use_color && use_color=true
+  resolve_server_ips
 
   {
     emit_all_required_env false
@@ -1095,33 +1265,36 @@ print_env_files() {
 }
 
 print_summary() {
-  local ip deploy="$REPO_ROOT/$DEPLOY_DIR_NAME"
-  ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost')"
+  local deploy="$REPO_ROOT/$DEPLOY_DIR_NAME"
+  resolve_server_ips
   resolve_hosting_domains
   printf '\n\033[1;32m✓ Cognix setup complete\033[0m\n\n'
-  echo "Repo:     $REPO_ROOT"
-  echo "Mode:     $MODE"
-  echo "Guide:    docs/HOSTING.md"
+  echo "Repo:       $REPO_ROOT"
+  echo "Mode:       $MODE"
+  echo "Public IP:  $SERVER_PUBLIC_IP"
+  echo "Private IP: $SERVER_PRIVATE_IP"
+  echo "Setup URL:  http://${SERVER_PUBLIC_IP}:${WEB_PORT}/setup"
+  echo "Guide:      docs/HOSTING.md"
   if [[ "$MODE" != "deps-only" ]]; then
-    echo "Deploy:   $deploy/"
-    echo "Output:   SETUP_COPY_PASTE.txt"
+    echo "Deploy:     $deploy/"
+    echo "Output:     SETUP_COPY_PASTE.txt"
   fi
   if [[ "$MODE" == "dev" ]]; then
-    echo "Next:     Follow DEVELOPMENT in output below (or SETUP_COPY_PASTE.txt)"
+    echo "Next:       Follow DEVELOPMENT in output below (or SETUP_COPY_PASTE.txt)"
   elif [[ "$MODE" == "production" ]]; then
-    echo "Next:     Follow PRODUCTION in output below"
+    echo "Next:       Follow PRODUCTION in output below"
     [[ -z "$DOMAIN" ]] && warn "Re-run with: --domain app.yourdomain.com"
   elif [[ "$MODE" == "docker" ]]; then
-    echo "Next:     Follow DOCKER MODE in output below"
+    echo "Next:       Follow DOCKER MODE in output below"
   fi
   if [[ "$MODE" == "dev" || "$MODE" == "production" ]]; then
-    echo "Local:    http://127.0.0.1:${WEB_PORT}  agent http://127.0.0.1:${AGENT_PORT}/health"
+    echo "On server:  http://127.0.0.1:${WEB_PORT}/setup  agent http://127.0.0.1:${AGENT_PORT}/health"
     if [[ -n "$DOMAIN" ]]; then
-      echo "Public:   https://${HOSTING_APP_DOMAIN}  api https://${HOSTING_API_DOMAIN}"
+      echo "HTTPS:      https://${HOSTING_APP_DOMAIN}  api https://${HOSTING_API_DOMAIN}"
     fi
   elif [[ "$MODE" == "docker" ]]; then
-    echo "Web UI:   http://localhost:3000  (LAN: http://${ip}:3000)"
-    echo "Agent:    http://localhost:3001/health"
+    echo "Web UI:     http://${SERVER_PUBLIC_IP}:${WEB_PORT}"
+    echo "Agent:      http://${SERVER_PUBLIC_IP}:${AGENT_PORT}/health"
   fi
   if [[ "$START_APPS" == true ]]; then
     echo "Logs:     $REPO_ROOT/$LOG_DIR_NAME/logs/  (--start was used)"
