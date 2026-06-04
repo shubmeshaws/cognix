@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { getAgentApiBase } from "@/lib/agent-api-base";
 
 export interface AgentLoginResult {
   token: string;
@@ -17,7 +17,7 @@ export interface BootstrapAdminResult {
 }
 
 export async function fetchAuthSetupStatus(): Promise<{ needsSetup: boolean }> {
-  const res = await fetch(`${API_BASE}/api/auth/setup-status`, {
+  const res = await fetch(`${getAgentApiBase()}/auth/setup-status`, {
     cache: "no-store",
   });
   if (!res.ok) {
@@ -26,14 +26,18 @@ export async function fetchAuthSetupStatus(): Promise<{ needsSetup: boolean }> {
   return (await res.json()) as { needsSetup: boolean };
 }
 
-export async function fetchSsoPublicConfig(): Promise<{ providers: Array<"google" | "github" | "linkedin"> }> {
-  const res = await fetch(`${API_BASE}/api/auth/sso-public`, {
+export async function fetchSsoPublicConfig(): Promise<{
+  providers: Array<"google" | "github" | "linkedin">;
+}> {
+  const res = await fetch(`${getAgentApiBase()}/auth/sso-public`, {
     cache: "no-store",
   });
   if (!res.ok) {
     return { providers: [] };
   }
-  return (await res.json()) as { providers: Array<"google" | "github" | "linkedin"> };
+  return (await res.json()) as {
+    providers: Array<"google" | "github" | "linkedin">;
+  };
 }
 
 export interface SsoInternalProviderSettings {
@@ -52,7 +56,7 @@ export async function fetchSsoInternalConfig(): Promise<{
     return { providers: {} };
   }
 
-  const res = await fetch(`${API_BASE}/api/auth/sso-internal`, {
+  const res = await fetch(`${getAgentApiBase()}/auth/sso-internal`, {
     headers: { "X-Auth-Sync-Secret": secret },
     cache: "no-store",
   });
@@ -69,7 +73,7 @@ export async function fetchSsoInternalConfig(): Promise<{
 }
 
 export async function bootstrapAdminWithAgent(): Promise<BootstrapAdminResult> {
-  const res = await fetch(`${API_BASE}/api/auth/bootstrap-admin`, {
+  const res = await fetch(`${getAgentApiBase()}/auth/bootstrap-admin`, {
     method: "POST",
     cache: "no-store",
   });
@@ -77,8 +81,8 @@ export async function bootstrapAdminWithAgent(): Promise<BootstrapAdminResult> {
   if (!res.ok) {
     let message = "Failed to generate admin credentials";
     try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) message = body.error;
+      const body = (await res.json()) as { error?: string; detail?: string };
+      message = body.error ?? body.detail ?? message;
     } catch {
       message = await res.text();
     }
@@ -92,7 +96,7 @@ export async function loginWithAgentCredentials(input: {
   emailOrUsername: string;
   password: string;
 }): Promise<AgentLoginResult | null> {
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
+  const res = await fetch(`${getAgentApiBase()}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -117,7 +121,7 @@ export async function syncOAuthUserWithAgent(input: {
     throw new Error("JWT_SECRET is not configured");
   }
 
-  const res = await fetch(`${API_BASE}/api/auth/oauth`, {
+  const res = await fetch(`${getAgentApiBase()}/auth/oauth`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -139,7 +143,7 @@ export async function changePasswordWithAgent(
   token: string,
   input: { currentPassword: string; newPassword: string },
 ): Promise<{ token: string }> {
-  const res = await fetch(`${API_BASE}/api/auth/change-password`, {
+  const res = await fetch(`${getAgentApiBase()}/auth/change-password`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
