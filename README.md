@@ -14,6 +14,14 @@
 
 ---
 
+---
+
+## Application
+
+![Cognix dashboard homepage](docs/assets/homepage.png)
+
+---
+
 ## Quick Setup (Ubuntu 24.04+ / EC2)
 
 Automated installer: **`scripts/setup-ubuntu.sh`** — installs Docker, Node 20, pnpm, Postgres, Redis, Ollama, applies the DB schema, writes env files, and prints copy-paste values + API test commands.
@@ -69,13 +77,7 @@ pnpm dev:web -- -H 0.0.0.0
 
 Use `--dev-auth-off` only if you want to skip login and go straight to the dashboard.
 
----
 
-## Application
-
-![Cognix dashboard homepage](docs/assets/homepage.png)
-
----
 
 ## Choose your installation method
 
