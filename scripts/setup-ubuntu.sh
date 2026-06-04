@@ -892,13 +892,18 @@ When to use: Day-to-day dev on this machine or EC2 lab. Login is usually off
 
 4) Open in browser:
    http://127.0.0.1:${WEB_PORT}
-   http://${ip}:${WEB_PORT}     # from your laptop on same network / EC2 public IP
+   http://${ip}:${WEB_PORT}     # EC2: allow inbound TCP ${WEB_PORT} and ${AGENT_PORT} in security group
 
-5) Verify:
+5) EC2 cannot connect from internet?
+   ss -tlnp | grep -E ':${WEB_PORT}|:${AGENT_PORT}'   # must show 0.0.0.0 not 127.0.0.1
+   sudo ufw status                                   # allow ${WEB_PORT}/${AGENT_PORT} if active
+   AWS Security Group → Inbound: TCP ${WEB_PORT}, ${AGENT_PORT} from your IP (or 0.0.0.0/0 for lab)
+
+6) Verify:
    curl -s http://127.0.0.1:${AGENT_PORT}/health
    curl -s -o /dev/null -w "web HTTP %%{http_code}\n" http://127.0.0.1:${WEB_PORT}/
 
-6) Admin user (only if auth is enabled in apps/web/.env):
+7) Admin user (only if auth is enabled in apps/web/.env):
    cd ${REPO_ROOT}
    pnpm --filter @kubehealer/agent create-admin -- \\
      --email you@example.com --name "Your Name"
