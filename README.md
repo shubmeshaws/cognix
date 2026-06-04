@@ -67,7 +67,7 @@ cd cognix
 pnpm -v          # must be 9.x (e.g. 9.15.0) — not 11+ on Node 20
 pnpm dev:agent
 # another terminal:
-pnpm dev:web -- -H 0.0.0.0
+pnpm dev:web or pnpm dev:web -- -H 0.0.0.0
 ```
 
 If `pnpm` shows **11.x** or `node:sqlite` errors, pin the project version:
