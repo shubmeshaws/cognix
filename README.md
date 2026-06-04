@@ -49,6 +49,23 @@ sudo chmod +x scripts/setup-ubuntu.sh
 ./scripts/setup-ubuntu.sh -y
 ```
 
+### After the script
+
+1. Review **`SETUP_COPY_PASTE.txt`** (and terminal output): author info, **API test curls**, required **env** values.
+2. Start the app (two terminals on the server):
+
+```bash
+cd cognix
+pnpm -v          # must be 9.x (e.g. 9.15.0) — not 11+ on Node 20
+pnpm dev:agent
+# another terminal:
+pnpm dev:web or pnpm dev:web -- -H 0.0.0.0
+```
+
+```bash
+DONE
+```
+---
 **Production build + deploy configs:**
 
 ```bash
