@@ -27,9 +27,8 @@ SETUP_COPY_PASTE.txt
 *.sqlite
 *.sqlite3
 
-# --- Kubernetes credentials (never commit) ---
-kubeconfig
-kubeconfig.*
+# --- Kubernetes credential files (never commit; do not use kubeconfig.* — matches kubeconfig.ts) ---
+/kubeconfig
 *.kubeconfig
 **/kubeconfig.yaml
 **/kubeconfig.yml

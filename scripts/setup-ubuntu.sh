@@ -556,6 +556,10 @@ ENV_C_BOLD_YELLOW=$'\033[1;33m'
 ENV_C_GREEN=$'\033[0;32m'
 ENV_C_DIM=$'\033[2m'
 ENV_C_BOLD=$'\033[1m'
+ENV_C_BOLD_MAGENTA=$'\033[1;35m'
+ENV_C_BOLD_GREEN=$'\033[1;32m'
+ENV_C_BOLD_BLUE=$'\033[1;34m'
+ENV_C_YELLOW=$'\033[0;33m'
 
 env_output_use_color() {
   [[ -t 1 ]]
@@ -668,10 +672,10 @@ emit_all_required_env() {
   fi
 
   if [[ "$use_color" == true ]]; then
-    printf '\n%s  Optional keys (LLM API keys, SSO, TTS, webhooks) stay in .env.example — not shown.%s\n' "$ENV_C_DIM" "$ENV_C_RESET"
+    printf '\n%s  (Optional: LLM keys, SSO, TTS — see .env.example if needed.)%s\n' "$ENV_C_DIM" "$ENV_C_RESET"
   else
     echo ""
-    echo "# Optional keys (LLM, SSO, TTS, webhooks) are in .env.example — not listed here."
+    echo "# Optional: LLM keys, SSO, TTS — see .env.example"
   fi
 }
 
@@ -805,56 +809,257 @@ start_docker_stack() {
   done
 }
 
-print_hosting_commands() {
+hosting_domain_is_placeholder() {
+  [[ "$HOSTING_APP_DOMAIN" == *CHANGE_ME* || "$HOSTING_API_DOMAIN" == *CHANGE_ME* ]]
+}
+
+# Section title for next-steps output (color or plain).
+steps_print_banner() {
+  local title="$1" use_color="$2"
+  if [[ "$use_color" == true ]]; then
+    printf '\n%s╔══════════════════════════════════════════════════════════════════╗%s\n' "$ENV_C_BOLD" "$ENV_C_RESET"
+    printf '%s║  %-64s║%s\n' "$ENV_C_BOLD" "$title" "$ENV_C_RESET"
+    printf '%s╚══════════════════════════════════════════════════════════════════╝%s\n' "$ENV_C_BOLD" "$ENV_C_RESET"
+  else
+    printf '\n================================================================================\n'
+    printf '  %s\n' "$title"
+    printf '================================================================================\n'
+  fi
+}
+
+steps_print_heading() {
+  local label="$1" color="$2" use_color="$3"
+  if [[ "$use_color" == true ]]; then
+    printf '\n%s▶ %s%s\n' "$color" "$label" "$ENV_C_RESET"
+  else
+    printf '\n--- %s ---\n' "$label"
+  fi
+}
+
+print_setup_context() {
+  local ip="$1" use_color="$2"
   resolve_hosting_domains
-  local deploy="$REPO_ROOT/$DEPLOY_DIR_NAME"
+  steps_print_banner "SETUP SUMMARY" "$use_color"
+  if [[ "$use_color" == true ]]; then
+    printf '  %sMode:%s          %s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$MODE"
+    printf '  %sRepo:%s          %s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$REPO_ROOT"
+    printf '  %sServer IP:%s     %s  (LAN access)\n' "$ENV_C_DIM" "$ENV_C_RESET" "$ip"
+    if [[ -n "$DOMAIN" ]]; then
+      printf '  %sApp domain:%s    https://%s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$HOSTING_APP_DOMAIN"
+      printf '  %sAPI domain:%s    https://%s\n' "$ENV_C_DIM" "$ENV_C_RESET" "$HOSTING_API_DOMAIN"
+    else
+      printf '  %sDomain:%s         %s(not passed — use --domain for production HTTPS)%s\n' \
+        "$ENV_C_DIM" "$ENV_C_RESET" "$ENV_C_YELLOW" "$ENV_C_RESET"
+    fi
+    printf '  %sFull guide:%s     %s/docs/HOSTING.md\n' "$ENV_C_DIM" "$ENV_C_RESET" "$REPO_ROOT"
+  else
+    printf 'Mode:       %s\n' "$MODE"
+    printf 'Repo:       %s\n' "$REPO_ROOT"
+    printf 'Server IP:  %s\n' "$ip"
+    if [[ -n "$DOMAIN" ]]; then
+      printf 'App domain: https://%s\n' "$HOSTING_APP_DOMAIN"
+      printf 'API domain: https://%s\n' "$HOSTING_API_DOMAIN"
+    else
+      printf 'Domain:     (not set — add --domain app.yourdomain.com for production)\n'
+    fi
+    printf 'Guide:      docs/HOSTING.md\n'
+  fi
+}
+
+print_development_steps() {
+  local ip="$1" use_color="$2"
+  steps_print_heading "DEVELOPMENT — local testing (hot reload, no Nginx)" "$ENV_C_BOLD_BLUE" "$use_color"
   cat <<EOF
+When to use: Day-to-day dev on this machine or EC2 lab. Login is usually off
+             (NEXT_PUBLIC_AUTH_DISABLED=true). No SSL required.
 
-================================================================================
-NEXT STEPS — start app, Nginx, SSL (full guide: docs/HOSTING.md)
-================================================================================
-Domains (edit .kubehealer/deploy/ and env if these placeholders are wrong):
-  App:  https://${HOSTING_APP_DOMAIN}
-  API:  https://${HOSTING_API_DOMAIN}
+1) Env files (you already copied these):
+   ${REPO_ROOT}/apps/agent/.env
+   ${REPO_ROOT}/apps/web/.env
 
---- 1) Build (skip if you used --mode production) ---
-cd ${REPO_ROOT}
-pnpm build
+2) Infra (already started by setup):
+   cd ${REPO_ROOT}
+   docker compose ps          # postgres, redis, ollama should be Up
 
---- 2a) systemd ---
-sudo cp ${deploy}/systemd/cognix-agent.service /etc/systemd/system/
-sudo cp ${deploy}/systemd/cognix-web.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable cognix-agent cognix-web
-sudo systemctl start cognix-agent cognix-web
-sudo systemctl status cognix-agent cognix-web
+3) Start app — pick ONE:
 
---- 2b) PM2 ---
-cd ${REPO_ROOT}
-sudo npm install -g pm2
-pm2 start ${deploy}/ecosystem.config.cjs
-pm2 save
-pm2 startup
+   Option A — two terminals (recommended for dev):
+   cd ${REPO_ROOT} && pnpm dev:agent
+   cd ${REPO_ROOT} && pnpm dev:web
 
---- 3) Nginx ---
-sudo apt install -y nginx
-sudo cp ${deploy}/nginx/cognix.conf /etc/nginx/sites-available/cognix
-sudo ln -sf /etc/nginx/sites-available/cognix /etc/nginx/sites-enabled/
-# Add map \$http_upgrade \$connection_upgrade { default upgrade; '' close; } in /etc/nginx/nginx.conf http {}
-sudo nginx -t && sudo systemctl reload nginx
+   Option B — background (quick smoke test):
+   cd ${REPO_ROOT} && ./scripts/setup-ubuntu.sh --start -y
 
---- 4) SSL (Let's Encrypt) — DNS A records must point here first ---
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d ${HOSTING_APP_DOMAIN} -d ${HOSTING_API_DOMAIN} \\
-  --email YOUR_EMAIL@example.com --agree-tos --redirect
-sudo certbot renew --dry-run
+4) Open in browser:
+   http://127.0.0.1:${WEB_PORT}
+   http://${ip}:${WEB_PORT}     # from your laptop on same network / EC2 public IP
 
---- Verify ---
-curl -s http://127.0.0.1:${AGENT_PORT}/health
-curl -s -o /dev/null -w "web %{http_code}\n" http://127.0.0.1:${WEB_PORT}/
+5) Verify:
+   curl -s http://127.0.0.1:${AGENT_PORT}/health
+   curl -s -o /dev/null -w "web HTTP %%{http_code}\n" http://127.0.0.1:${WEB_PORT}/
 
-Generated configs: ${deploy}/
+6) Admin user (only if auth is enabled in apps/web/.env):
+   cd ${REPO_ROOT}
+   pnpm --filter @kubehealer/agent create-admin -- \\
+     --email you@example.com --name "Your Name"
 EOF
+}
+
+print_production_steps() {
+  local use_color="$1"
+  local deploy="$REPO_ROOT/$DEPLOY_DIR_NAME"
+  resolve_hosting_domains
+  steps_print_heading "PRODUCTION — public HTTPS (systemd or PM2 + Nginx + SSL)" "$ENV_C_BOLD_GREEN" "$use_color"
+  if hosting_domain_is_placeholder; then
+    if [[ "$use_color" == true ]]; then
+      printf '\n  %s⚠  No real domain was set. Re-run setup to generate correct Nginx/env:%s\n' "$ENV_C_YELLOW" "$ENV_C_RESET"
+      printf '     %s./scripts/setup-ubuntu.sh --mode production -y --domain app.YOURDOMAIN.com%s\n\n' "$ENV_C_DIM" "$ENV_C_RESET"
+    else
+      printf '\nWARNING: No real domain. Re-run:\n'
+      printf '  ./scripts/setup-ubuntu.sh --mode production -y --domain app.YOURDOMAIN.com\n\n'
+    fi
+  fi
+  cat <<EOF
+When to use: Real users on the internet with https://app.yourdomain.com
+
+0) Checklist before you start:
+   [ ] DNS A records: app.yourdomain.com and api.yourdomain.com → server IP
+   [ ] Env files use https:// API URL and JWT_SECRET matches in agent + web
+   [ ] NEXT_PUBLIC_AUTH_DISABLED=false (or removed) in apps/web/.env
+   [ ] NEXTAUTH_URL / NEXT_PUBLIC_APP_URL = your public app URL
+
+1) Regenerate deploy configs with your real domain (if you still see CHANGE_ME):
+   cd ${REPO_ROOT}
+   ./scripts/setup-ubuntu.sh --mode production -y --domain app.yourdomain.com
+
+2) Build production bundles:
+   cd ${REPO_ROOT}
+   pnpm build
+
+3) Start app — pick systemd OR PM2 (not pnpm dev):
+
+   systemd:
+   sudo cp ${deploy}/systemd/cognix-agent.service /etc/systemd/system/
+   sudo cp ${deploy}/systemd/cognix-web.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable cognix-agent cognix-web
+   sudo systemctl start cognix-agent cognix-web
+   sudo systemctl status cognix-agent cognix-web
+
+   PM2:
+   cd ${REPO_ROOT}
+   sudo npm install -g pm2
+   pm2 start ${deploy}/ecosystem.config.cjs
+   pm2 save && pm2 startup
+
+4) Nginx reverse proxy:
+   sudo apt install -y nginx
+   sudo cp ${deploy}/nginx/cognix.conf /etc/nginx/sites-available/cognix
+   sudo ln -sf /etc/nginx/sites-available/cognix /etc/nginx/sites-enabled/
+   # Inside /etc/nginx/nginx.conf → http { } add if missing:
+   #   map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }
+   sudo nginx -t && sudo systemctl reload nginx
+
+5) SSL (Let's Encrypt) — replace domains and email:
+   sudo apt install -y certbot python3-certbot-nginx
+   sudo certbot --nginx -d ${HOSTING_APP_DOMAIN} -d ${HOSTING_API_DOMAIN} \\
+     --email YOUR_EMAIL@example.com --agree-tos --redirect
+   sudo certbot renew --dry-run
+
+6) Create admin (first login):
+   cd ${REPO_ROOT}
+   pnpm --filter @kubehealer/agent create-admin -- \\
+     --email you@example.com --name "Your Name"
+
+7) Open:
+   https://${HOSTING_APP_DOMAIN}
+
+8) Verify locally then publicly:
+   curl -s http://127.0.0.1:${AGENT_PORT}/health
+   curl -s https://${HOSTING_API_DOMAIN}/health
+   curl -s -o /dev/null -w "web HTTP %%{http_code}\n" https://${HOSTING_APP_DOMAIN}/
+
+Deploy files: ${deploy}/
+EOF
+}
+
+print_docker_steps() {
+  local ip="$1" use_color="$2"
+  steps_print_heading "DOCKER MODE — full stack in containers" "$ENV_C_BOLD_MAGENTA" "$use_color"
+  cat <<EOF
+When to use: Prefer docker compose for app + infra (less PM2/systemd).
+
+1) Env files:
+   ${REPO_ROOT}/.env
+   ${REPO_ROOT}/.env.web
+
+2) Stack (setup already ran compose up):
+   cd ${REPO_ROOT}
+   docker compose ps
+   docker compose logs -f agent
+
+3) Optional Nginx + SSL in front of ports 3000 / 3001 (see PRODUCTION steps 4–5).
+   Set NEXT_PUBLIC_API_URL to your public API URL in .env.web
+
+4) Open:
+   http://${ip}:3000
+   http://127.0.0.1:3000
+EOF
+}
+
+print_which_path_hint() {
+  local use_color="$1"
+  if [[ "$use_color" == true ]]; then
+    printf '\n%s┌─ Which path should I follow? ─────────────────────────────────────%s\n' "$ENV_C_BOLD_CYAN" "$ENV_C_RESET"
+  else
+    printf '\n--- Which path should I follow? ---\n'
+  fi
+  case "$MODE" in
+    dev)
+      if [[ "$use_color" == true ]]; then
+        printf '  %s► Follow DEVELOPMENT above%s for local work on this server.\n' "$ENV_C_BOLD_BLUE" "$ENV_C_RESET"
+        printf '  %s  Follow PRODUCTION above%s when you have a real domain and HTTPS.\n' "$ENV_C_DIM" "$ENV_C_RESET"
+      else
+        echo "  → Follow DEVELOPMENT above for local work."
+        echo "  → Follow PRODUCTION above when you have a real domain and HTTPS."
+      fi
+      ;;
+    production)
+      if [[ "$use_color" == true ]]; then
+        printf '  %s► Follow PRODUCTION above%s (build is already done).\n' "$ENV_C_BOLD_GREEN" "$ENV_C_RESET"
+        printf '  %s  Use DEVELOPMENT only%s for quick debugging with hot reload.\n' "$ENV_C_DIM" "$ENV_C_RESET"
+      else
+        echo "  → Follow PRODUCTION above (build already done)."
+        echo "  → Use DEVELOPMENT only for quick debugging with hot reload."
+      fi
+      ;;
+    docker)
+      if [[ "$use_color" == true ]]; then
+        printf '  %s► Follow DOCKER MODE above.%s\n' "$ENV_C_BOLD_MAGENTA" "$ENV_C_RESET"
+      else
+        echo "  → Follow DOCKER MODE above."
+      fi
+      ;;
+  esac
+}
+
+print_next_steps() {
+  local use_color="${1:-false}"
+  local ip
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo '127.0.0.1')"
+
+  steps_print_banner "WHAT TO DO NEXT" "$use_color"
+  print_setup_context "$ip" "$use_color"
+
+  if [[ "$MODE" == "docker" ]]; then
+    print_docker_steps "$ip" "$use_color"
+    print_production_steps "$use_color"
+  else
+    print_development_steps "$ip" "$use_color"
+    print_production_steps "$use_color"
+  fi
+
+  print_which_path_hint "$use_color"
 }
 
 print_env_files() {
@@ -865,7 +1070,7 @@ print_env_files() {
   {
     emit_all_required_env false
     if [[ "$MODE" != "deps-only" ]]; then
-      print_hosting_commands
+      print_next_steps false
     fi
     echo ""
     echo "================================================================================"
@@ -874,13 +1079,13 @@ print_env_files() {
   emit_all_required_env "$use_color"
 
   if [[ "$MODE" != "deps-only" ]]; then
-    print_hosting_commands
+    print_next_steps "$use_color"
     echo ""
     echo "================================================================================"
   fi
 
   echo ""
-  log "Required env (plain) + hosting steps saved to: $out_file"
+  log "Required env + dev/production steps saved to: $out_file"
   log "Hosting guide: $REPO_ROOT/docs/HOSTING.md"
 }
 
@@ -896,9 +1101,17 @@ print_summary() {
     echo "Deploy:   $deploy/"
     echo "Output:   SETUP_COPY_PASTE.txt"
   fi
+  if [[ "$MODE" == "dev" ]]; then
+    echo "Next:     Follow DEVELOPMENT in output below (or SETUP_COPY_PASTE.txt)"
+  elif [[ "$MODE" == "production" ]]; then
+    echo "Next:     Follow PRODUCTION in output below"
+    [[ -z "$DOMAIN" ]] && warn "Re-run with: --domain app.yourdomain.com"
+  elif [[ "$MODE" == "docker" ]]; then
+    echo "Next:     Follow DOCKER MODE in output below"
+  fi
   if [[ "$MODE" == "dev" || "$MODE" == "production" ]]; then
     echo "Local:    http://127.0.0.1:${WEB_PORT}  agent http://127.0.0.1:${AGENT_PORT}/health"
-    if [[ "$DOMAIN" != "" ]]; then
+    if [[ -n "$DOMAIN" ]]; then
       echo "Public:   https://${HOSTING_APP_DOMAIN}  api https://${HOSTING_API_DOMAIN}"
     fi
   elif [[ "$MODE" == "docker" ]]; then
