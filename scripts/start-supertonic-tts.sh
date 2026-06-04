@@ -11,8 +11,20 @@ lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | xargs kill -9 2>/dev/null || true
 
 cd "$DIR"
 
-if [ ! -d .venv ]; then
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 not found. Install: sudo apt install -y python3 python3-venv python3-pip"
+  exit 1
+fi
+
+if ! python3 -c "import venv" 2>/dev/null; then
+  echo "python3-venv is not installed. Run:"
+  echo "  sudo apt install -y python3-venv python3-pip"
+  exit 1
+fi
+
+if [ ! -x .venv/bin/supertonic ]; then
   echo "Creating Python venv and installing Supertonic..."
+  rm -rf .venv
   python3 -m venv .venv
   .venv/bin/pip install -q -r requirements.txt
 fi

@@ -162,7 +162,10 @@ install_system_packages() {
     openssl \
     make \
     lsb-release \
-    build-essential
+    build-essential \
+    python3 \
+    python3-venv \
+    python3-pip
 }
 
 install_docker() {
@@ -1089,6 +1092,36 @@ install_node_dependencies() {
   fi
 }
 
+prepare_supertonic_venv() {
+  local dir="$REPO_ROOT/services/supertonic-tts"
+  [[ -f "$dir/requirements.txt" ]] || return 0
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 not found — Meshy Supertonic voice needs: sudo apt install -y python3 python3-venv python3-pip"
+    return 0
+  fi
+  if ! python3 -c "import venv" 2>/dev/null; then
+    warn "python3-venv missing — run: sudo apt install -y python3-venv python3-pip"
+    return 0
+  fi
+
+  log "Preparing Supertonic TTS venv (Meshy neural voice)…"
+  if run_repo_as_user bash -c '
+    set -euo pipefail
+    cd "$1"
+    if [[ -x .venv/bin/supertonic ]]; then
+      exit 0
+    fi
+    rm -rf .venv
+    python3 -m venv .venv
+    .venv/bin/pip install -q -r requirements.txt
+  ' _ "$dir"; then
+    log "Supertonic venv ready"
+  else
+    warn "Supertonic venv setup failed — run: ./scripts/start-supertonic-tts.sh"
+  fi
+}
+
 push_database_schema() {
   log "Applying database schema (drizzle push)…"
   run_repo_as_user pnpm --filter @kubehealer/agent db:push
@@ -1549,6 +1582,7 @@ main() {
   # dev | production
   start_infra_services
   install_node_dependencies
+  prepare_supertonic_venv
   push_database_schema
   build_production_apps
   generate_deploy_configs

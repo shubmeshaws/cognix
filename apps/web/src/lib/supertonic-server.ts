@@ -1,5 +1,10 @@
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import {
+  execFileSync,
+  spawn,
+  type ChildProcess,
+  type ExecFileSyncException,
+} from "node:child_process";
+import { accessSync, constants, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 
 const SUPERTONIC_BASE =
@@ -49,17 +54,76 @@ export async function isSupertonicReachable(
   }
 }
 
+function assertSupertonicDirWritable(dir: string): void {
+  try {
+    accessSync(dir, constants.W_OK);
+  } catch {
+    throw new Error(
+      `Cannot write to ${dir}. Fix permissions: sudo chown -R $USER:$USER ${dir}`,
+    );
+  }
+}
+
+function execOrThrow(
+  file: string,
+  args: string[],
+  options: { cwd: string },
+): void {
+  try {
+    execFileSync(file, args, { ...options, stdio: "pipe", encoding: "utf8" });
+  } catch (err) {
+    const execErr = err as ExecFileSyncException & {
+      stderr?: string;
+      stdout?: string;
+    };
+    const detail = [execErr.stderr, execErr.stdout]
+      .filter((s): s is string => Boolean(s?.trim()))
+      .join("\n")
+      .trim();
+    const combined = `${detail}\n${execErr.message ?? ""}`.toLowerCase();
+
+    if (
+      combined.includes("ensurepip") ||
+      combined.includes("python3-venv") ||
+      combined.includes("no module named venv")
+    ) {
+      throw new Error(
+        "Python venv is not available. On Ubuntu run: sudo apt install -y python3 python3-venv python3-pip — then retry, or run: ./scripts/start-supertonic-tts.sh",
+      );
+    }
+
+    if (combined.includes("permission denied") || combined.includes("eacces")) {
+      throw new Error(
+        `Permission denied in ${options.cwd}. Run: sudo chown -R $USER:$USER ${options.cwd}`,
+      );
+    }
+
+    throw new Error(
+      detail ||
+        execErr.message ||
+        `Command failed: ${file} ${args.join(" ")}`,
+    );
+  }
+}
+
 function ensureVenv(): void {
   const dir = supertonicDir();
   const bin = supertonicBin();
   if (existsSync(bin)) return;
 
+  assertSupertonicDirWritable(dir);
+
+  const venvDir = path.join(dir, ".venv");
+  if (existsSync(venvDir) && !existsSync(bin)) {
+    rmSync(venvDir, { recursive: true, force: true });
+  }
+
   const python3 = process.env.PYTHON3 ?? "python3";
-  execFileSync(python3, ["-m", "venv", ".venv"], { cwd: dir, stdio: "pipe" });
-  execFileSync(
+  execOrThrow(python3, ["-m", "venv", ".venv"], { cwd: dir });
+  execOrThrow(
     pythonBin(),
     ["-m", "pip", "install", "-q", "-r", "requirements.txt"],
-    { cwd: dir, stdio: "pipe", env: process.env },
+    { cwd: dir },
   );
 }
 
