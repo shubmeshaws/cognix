@@ -30,6 +30,8 @@ Automated installer: **`scripts/setup-ubuntu.sh`** — installs Docker, Node 20,
 ### Run the script
 
 ```bash
+sudo su ubuntu
+cd /home/ubuntu/
 git clone https://github.com/shubmeshaws/cognix.git cognix
 cd cognix
 chmod +x scripts/setup-ubuntu.sh
@@ -143,8 +145,6 @@ pnpm -v   # should print 9.15.0
 On a new **Ubuntu 24.04+** server, use the automated installer:
 
 ```bash
-sudo su ubuntu
-cd /home/ubuntu/
 git clone https://github.com/shubmeshaws/cognix.git cognix
 cd cognix
 chmod +x scripts/setup-ubuntu.sh
