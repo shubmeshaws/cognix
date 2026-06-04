@@ -1013,32 +1013,49 @@ start_infra_services() {
   compose_cmd up ollama-pull || warn "ollama-pull failed; pull manually: docker compose up ollama-pull"
 }
 
-ensure_repo_owned_by_user() {
+repo_has_foreign_owned_files() {
+  local path="$1"
+  [[ -e "$path" ]] || return 1
+  find "$path" ! -user "$RUN_USER" 2>/dev/null | grep -q .
+}
+
+prepare_clean_node_modules() {
   [[ -d "$REPO_ROOT" ]] || return 0
   if [[ "$(id -u)" -eq 0 ]]; then
     die "Do not run pnpm install as root. Use your normal user (e.g. ubuntu)."
   fi
-  local owner
-  owner="$(stat -c '%U' "$REPO_ROOT" 2>/dev/null || echo "")"
-  if [[ "$owner" != "$RUN_USER" ]]; then
-    warn "Repo owned by $owner — fixing permissions for $RUN_USER"
-    run_with_elevation chown -R "$RUN_USER:$RUN_USER" "$REPO_ROOT"
+
+  local fix_script="$REPO_ROOT/scripts/fix-repo-permissions.sh"
+  if [[ -x "$fix_script" ]]; then
+    log "Fixing repo permissions ($RUN_USER)…"
+    "$fix_script" "$REPO_ROOT" "$RUN_USER"
     return 0
   fi
-  if [[ -e "$REPO_ROOT/node_modules" ]]; then
-    owner="$(stat -c '%U' "$REPO_ROOT/node_modules" 2>/dev/null || echo "")"
-    if [[ -n "$owner" && "$owner" != "$RUN_USER" ]]; then
-      warn "node_modules owned by $owner — fixing (avoid sudo pnpm / npm in repo)"
-      run_with_elevation chown -R "$RUN_USER:$RUN_USER" "$REPO_ROOT"
-    fi
+
+  run_with_elevation chown -R "$RUN_USER:$RUN_USER" "$REPO_ROOT"
+
+  if [[ ! -d "$REPO_ROOT/node_modules" ]]; then
+    return 0
+  fi
+
+  # Parent can be ubuntu while .bin (or nested files) are still root — chown alone is not enough.
+  if repo_has_foreign_owned_files "$REPO_ROOT/node_modules"; then
+    warn "node_modules contains files not owned by $RUN_USER — removing with sudo"
+    run_with_elevation rm -rf "$REPO_ROOT/node_modules"
+    return 0
+  fi
+
+  if ! rm -rf "$REPO_ROOT/node_modules" 2>/dev/null; then
+    warn "Could not remove node_modules as $RUN_USER — using sudo rm -rf"
+    run_with_elevation rm -rf "$REPO_ROOT/node_modules"
   fi
 }
 
 install_node_dependencies() {
   cd "$REPO_ROOT"
-  ensure_repo_owned_by_user
+  prepare_clean_node_modules
   ensure_project_pnpm
-  log "Installing pnpm dependencies…"
+  log "Installing pnpm dependencies (as $RUN_USER, no sudo)…"
   pnpm install
   log "Building shared package…"
   pnpm --filter @kubehealer/shared build

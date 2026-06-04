@@ -77,11 +77,20 @@ sudo corepack prepare pnpm@9.15.0 --activate
 pnpm -v
 ```
 
-If **`EACCES`** on `node_modules`, files were likely created as `root` (do not run `sudo pnpm` in the repo):
+If **`EACCES`** on `node_modules`, root-owned files are blocking delete (do not use `sudo pnpm` in the repo):
 
 ```bash
-sudo chown -R "$USER:$USER" ~/cognix
-rm -rf ~/cognix/node_modules
+cd ~/cognix
+chmod +x scripts/fix-repo-permissions.sh
+./scripts/fix-repo-permissions.sh
+pnpm install
+```
+
+Or manually:
+
+```bash
+sudo rm -rf ~/cognix/node_modules
+sudo chown -R "$USER:$USER" ~/cognix ~/.local/share/pnpm ~/.cache/node 2>/dev/null
 cd ~/cognix && pnpm install
 ```
 
