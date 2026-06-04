@@ -472,9 +472,11 @@ configure_env_files() {
     write_env_if_missing "$root_web" "$REPO_ROOT/.env.web.example" ".env.web"
   fi
 
-  if [[ "$MODE" == "dev" && -f "$agent_env" ]]; then
+  if [[ "$MODE" == "dev" || "$MODE" == "production" ]] && [[ -f "$agent_env" ]]; then
     if grep -qE '^ALLOW_LOCAL_KUBECONFIG=' "$agent_env"; then
       sed_inplace 's/^ALLOW_LOCAL_KUBECONFIG=.*/ALLOW_LOCAL_KUBECONFIG=true/' "$agent_env"
+    else
+      echo "ALLOW_LOCAL_KUBECONFIG=true" >>"$agent_env"
     fi
   fi
 
@@ -857,6 +859,9 @@ env_print_section() {
 agent_required_keys() {
   local file="$1"
   printf '%s\n' DATABASE_URL JWT_SECRET OLLAMA_URL
+  if [[ "$MODE" == "dev" || "$MODE" == "production" ]]; then
+    printf '%s\n' ALLOW_LOCAL_KUBECONFIG
+  fi
   if [[ -f "$file" ]] && grep -qE '^AGENT_HOST=' "$file" 2>/dev/null; then
     printf '%s\n' AGENT_HOST
   fi
@@ -956,6 +961,17 @@ emit_server_and_auth_block() {
     fi
     value="$(env_file_get "$agent_env" JWT_SECRET)"
     env_print_kv "JWT_SECRET" "$value" "$use_color"
+    if [[ "$MODE" == "dev" || "$MODE" == "production" ]]; then
+      value="$(env_file_get "$agent_env" ALLOW_LOCAL_KUBECONFIG)"
+      [[ -z "$value" ]] && value="true"
+      env_print_kv "ALLOW_LOCAL_KUBECONFIG" "$value" "$use_color"
+      if [[ "$use_color" == true ]]; then
+        printf '  %s→ import ~/.kube/config on this host (Connect cluster in UI)%s\n' \
+          "$ENV_C_DIM" "$ENV_C_RESET"
+      else
+        echo "#   → import ~/.kube/config on this host (Connect cluster in UI)"
+      fi
+    fi
   elif [[ "$use_color" == true ]]; then
     printf '  %s(apps/web/.env not found)%s\n' "$ENV_C_DIM" "$ENV_C_RESET"
   else
@@ -1005,9 +1021,12 @@ emit_all_required_env() {
   fi
 
   if [[ "$use_color" == true ]]; then
-    printf '\n%s  (Optional: LLM keys, SSO, TTS — see .env.example if needed.)%s\n' "$ENV_C_DIM" "$ENV_C_RESET"
+    printf '\n%s  Agent tip:%s ALLOW_LOCAL_KUBECONFIG=true — use ~/.kube/config on the server (see apps/agent/.env).%s\n' \
+      "$ENV_C_DIM" "$ENV_C_BOLD_YELLOW" "$ENV_C_RESET"
+    printf '%s  (Optional: LLM keys, SSO, TTS — see .env.example if needed.)%s\n' "$ENV_C_DIM" "$ENV_C_RESET"
   else
     echo ""
+    echo "# Agent tip: ALLOW_LOCAL_KUBECONFIG=true — import ~/.kube/config (apps/agent/.env)"
     echo "# Optional: LLM keys, SSO, TTS — see .env.example"
   fi
 }
