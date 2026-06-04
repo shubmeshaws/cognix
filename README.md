@@ -62,9 +62,19 @@ See **[docs/HOSTING.md](docs/HOSTING.md)** for Nginx, Certbot SSL, and systemd/P
 
 ```bash
 cd cognix
+pnpm -v          # must be 9.x (e.g. 9.15.0) — not 11+ on Node 20
 pnpm dev:agent
 # another terminal:
 pnpm dev:web -- -H 0.0.0.0
+```
+
+If `pnpm` shows **11.x** or `node:sqlite` errors, pin the project version:
+
+```bash
+sudo corepack enable
+sudo corepack prepare pnpm@9.15.0 --activate
+# or: sudo npm install -g pnpm@9.15.0
+pnpm -v
 ```
 
 3. Open **`http://<your-server-public-ip>:3000/setup`** → check DB → create schema → **`/login`** → generate admin credentials → sign in.

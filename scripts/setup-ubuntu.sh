@@ -230,34 +230,75 @@ node_is_system_wide() {
   [[ -n "$nodepath" && "$nodepath" == /usr/* ]]
 }
 
+PNPM_VERSION="9.15.0"
+
+pnpm_version_ok() {
+  local pv
+  pv="$(pnpm -v 2>/dev/null || true)"
+  [[ "$pv" == 9.* ]]
+}
+
+install_pnpm_via_npm_global() {
+  log "Installing pnpm@${PNPM_VERSION} via npm -g (works on Node 20)…"
+  if node_is_system_wide; then
+    run_with_elevation npm install -g "pnpm@${PNPM_VERSION}"
+  else
+    npm install -g "pnpm@${PNPM_VERSION}"
+  fi
+}
+
 enable_corepack_pnpm() {
+  local pv=""
   if command -v pnpm >/dev/null 2>&1; then
-    local pv
     pv="$(pnpm -v 2>/dev/null || true)"
-    if [[ "$pv" == 9.* ]]; then
+    if pnpm_version_ok; then
       log "pnpm already installed: $pv"
       return 0
     fi
-    warn "pnpm $pv found; installing pnpm@9.15.0"
+    warn "pnpm ${pv:-unknown} is not compatible with Node 20 — pinning pnpm@${PNPM_VERSION}"
   fi
 
   if node_is_system_wide; then
     log "System-wide Node.js (/usr) — enabling Corepack with sudo (avoids EACCES)…"
-    if ! run_with_elevation corepack enable; then
-      warn "corepack enable failed; trying npm -g…"
-      run_with_elevation npm install -g pnpm@9.15.0 || die "Could not install pnpm. Run: sudo npm install -g pnpm@9.15.0"
-      log "pnpm $(pnpm -v)"
-      return 0
+    run_with_elevation corepack enable 2>/dev/null || true
+    if ! run_with_elevation corepack prepare "pnpm@${PNPM_VERSION}" --activate 2>/dev/null; then
+      warn "corepack prepare failed; using npm -g"
+      install_pnpm_via_npm_global
     fi
-    run_with_elevation corepack prepare pnpm@9.15.0 --activate
   else
-    log "Enabling Corepack and pnpm 9.15.0…"
-    corepack enable
-    corepack prepare pnpm@9.15.0 --activate
+    log "Enabling Corepack and pnpm ${PNPM_VERSION}…"
+    corepack enable 2>/dev/null || true
+    corepack prepare "pnpm@${PNPM_VERSION}" --activate 2>/dev/null || install_pnpm_via_npm_global
   fi
 
-  command -v pnpm >/dev/null 2>&1 || die "pnpm not found. Run: sudo corepack enable && sudo corepack prepare pnpm@9.15.0 --activate"
-  log "pnpm $(pnpm -v)"
+  command -v pnpm >/dev/null 2>&1 || install_pnpm_via_npm_global
+  pnpm_version_ok || install_pnpm_via_npm_global
+  pnpm_version_ok || die "pnpm must be 9.x on Node 20. Run: sudo npm install -g pnpm@${PNPM_VERSION}"
+  log "pnpm $(pnpm -v) (Node $(node -v))"
+}
+
+# Pin pnpm from package.json (avoids Corepack defaulting to pnpm 11 on Node 20).
+ensure_project_pnpm() {
+  [[ -f "$REPO_ROOT/package.json" ]] || return 0
+  cd "$REPO_ROOT"
+  if command -v corepack >/dev/null 2>&1; then
+    if node_is_system_wide; then
+      run_with_elevation corepack enable 2>/dev/null || true
+      run_with_elevation corepack use "pnpm@${PNPM_VERSION}" 2>/dev/null \
+        || run_with_elevation corepack prepare "pnpm@${PNPM_VERSION}" --activate 2>/dev/null \
+        || true
+    else
+      corepack enable 2>/dev/null || true
+      corepack use "pnpm@${PNPM_VERSION}" 2>/dev/null \
+        || corepack prepare "pnpm@${PNPM_VERSION}" --activate 2>/dev/null \
+        || true
+    fi
+  fi
+  if ! pnpm_version_ok; then
+    warn "Repo requires pnpm ${PNPM_VERSION}; fixing global pnpm"
+    install_pnpm_via_npm_global
+  fi
+  log "Project pnpm: $(pnpm -v)"
 }
 
 install_node_pnpm() {
@@ -745,6 +786,8 @@ print_api_health_checks() {
     printf '\n  %s# From browser (security group: TCP %s, %s)%s\n' "$ENV_C_DIM" "$WEB_PORT" "$AGENT_PORT" "$ENV_C_RESET"
     printf '  http://%s:%s/setup  →  http://%s:%s/login\n' \
       "$SERVER_PUBLIC_IP" "$WEB_PORT" "$SERVER_PUBLIC_IP" "$WEB_PORT"
+    printf '\n  %s# pnpm on Node 20 must be 9.x (not 11+):%s  pnpm -v  →  9.15.0\n' "$ENV_C_DIM" "$ENV_C_RESET"
+    printf '  %s# fix:%s sudo npm install -g pnpm@9.15.0\n' "$ENV_C_DIM" "$ENV_C_RESET"
   else
     echo "curl -s http://127.0.0.1:${AGENT_PORT}/health"
     [[ "$agent_ok" == true ]] && echo "→ OK $agent_body" || echo "→ not running (pnpm dev:agent)"
@@ -971,6 +1014,7 @@ start_infra_services() {
 
 install_node_dependencies() {
   cd "$REPO_ROOT"
+  ensure_project_pnpm
   log "Installing pnpm dependencies…"
   pnpm install
   log "Building shared package…"
@@ -1421,6 +1465,7 @@ main() {
   fi
 
   resolve_repo_root
+  ensure_project_pnpm
   configure_env_files
 
   if [[ "$MODE" == "docker" ]]; then
