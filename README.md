@@ -90,7 +90,8 @@ On a new **Ubuntu 24.04+** server, use the automated installer:
 git clone https://github.com/shubmeshaws/cognix.git cognix
 cd cognix
 chmod +x scripts/setup-ubuntu.sh
-./scripts/setup-ubuntu.sh -y
+./scripts/setup-ubuntu.sh --mode production -y --domain app.yourdomain.com
+# See docs/HOSTING.md for Nginx, SSL (certbot), and systemd/PM2 start commands (printed at end)
 ```
 
 Or install tools only, then follow the steps below:

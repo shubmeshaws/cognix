@@ -1,0 +1,19 @@
+[Unit]
+Description=Cognix Agent API
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=CHANGE_ME_USER
+Group=CHANGE_ME_USER
+WorkingDirectory=CHANGE_ME_REPO/apps/agent
+EnvironmentFile=CHANGE_ME_REPO/apps/agent/.env
+Environment=NODE_ENV=production
+Environment=AGENT_HOST=127.0.0.1
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

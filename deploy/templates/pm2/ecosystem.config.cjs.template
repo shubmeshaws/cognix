@@ -1,0 +1,36 @@
+/**
+ * Cognix — PM2 process file (generated from setup script)
+ * Start:  cd CHANGE_ME_REPO && pm2 start .kubehealer/deploy/ecosystem.config.cjs
+ * Save:   pm2 save && pm2 startup
+ */
+module.exports = {
+  apps: [
+    {
+      name: "cognix-agent",
+      cwd: "CHANGE_ME_REPO/apps/agent",
+      script: "dist/index.js",
+      interpreter: "node",
+      env_file: ".env",
+      env: {
+        NODE_ENV: "production",
+        AGENT_HOST: "127.0.0.1",
+      },
+      instances: 1,
+      autorestart: true,
+      max_memory_restart: "1G",
+    },
+    {
+      name: "cognix-web",
+      cwd: "CHANGE_ME_REPO/apps/web",
+      script: "CHANGE_ME_NEXT_BIN",
+      args: "start -H 127.0.0.1 -p CHANGE_ME_WEB_PORT",
+      env_file: ".env",
+      env: {
+        NODE_ENV: "production",
+      },
+      instances: 1,
+      autorestart: true,
+      max_memory_restart: "1G",
+    },
+  ],
+};

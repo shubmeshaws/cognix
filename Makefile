@@ -1,4 +1,4 @@
-.PHONY: dev agent web db:push db:studio logs build
+.PHONY: dev agent web logs build
 
 # Full stack via Docker (postgres, redis, ollama, agent, web)
 dev:

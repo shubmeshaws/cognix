@@ -1,0 +1,20 @@
+[Unit]
+Description=Cognix Web (Next.js)
+After=network.target cognix-agent.service
+Wants=cognix-agent.service
+
+[Service]
+Type=simple
+User=CHANGE_ME_USER
+Group=CHANGE_ME_USER
+WorkingDirectory=CHANGE_ME_REPO/apps/web
+EnvironmentFile=CHANGE_ME_REPO/apps/web/.env
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=CHANGE_ME_WEB_PORT
+ExecStart=CHANGE_ME_NEXT_BIN start -H 127.0.0.1 -p CHANGE_ME_WEB_PORT
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

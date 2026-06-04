@@ -120,10 +120,14 @@ xcode-select --install
 git clone https://github.com/shubmeshaws/cognix.git cognix
 cd cognix
 chmod +x scripts/setup-ubuntu.sh
-./scripts/setup-ubuntu.sh              # local dev: Docker infra + pnpm + DB schema
-# ./scripts/setup-ubuntu.sh --mode docker   # full stack in containers
-# ./scripts/setup-ubuntu.sh --deps-only     # install tools only
+./scripts/setup-ubuntu.sh -y           # infra + schema; env output at end (start app via PM2/systemd)
+# ./scripts/setup-ubuntu.sh --mode production -y --domain app.example.com   # + build + deploy configs
+# ./scripts/setup-ubuntu.sh --mode docker -y   # full Docker stack
+# ./scripts/setup-ubuntu.sh --start -y         # optional: background dev servers (not for production)
+# ./scripts/setup-ubuntu.sh --with-nginx -y    # apt install nginx
 # ./scripts/setup-ubuntu.sh --help
+
+**Public hosting (Nginx + SSL + systemd/PM2):** [HOSTING.md](./HOSTING.md)
 ```
 
 Manual install:

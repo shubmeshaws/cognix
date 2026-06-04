@@ -1,0 +1,69 @@
+# Cognix — Nginx reverse proxy (generated from setup script)
+# Replace CHANGE_ME_* placeholders, then:
+#   sudo cp cognix.conf /etc/nginx/sites-available/cognix
+#   sudo ln -sf /etc/nginx/sites-available/cognix /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# SSL: use certbot after HTTP works — see docs/HOSTING.md
+
+# Web UI (Next.js)
+upstream cognix_web {
+    server 127.0.0.1:CHANGE_ME_WEB_PORT;
+    keepalive 32;
+}
+
+# Agent API + WebSockets
+upstream cognix_agent {
+    server 127.0.0.1:CHANGE_ME_AGENT_PORT;
+    keepalive 32;
+}
+
+# --- App (dashboard) ---
+server {
+    listen 80;
+    listen [::]:80;
+    server_name CHANGE_ME_APP_DOMAIN;
+
+    # Certbot will add listen 443 ssl; keep this block for HTTP→HTTPS redirect after SSL.
+
+    client_max_body_size 50m;
+
+    location / {
+        proxy_pass http://cognix_web;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+    }
+}
+
+# --- API (agent) — use a subdomain (recommended) ---
+server {
+    listen 80;
+    listen [::]:80;
+    server_name CHANGE_ME_API_DOMAIN;
+
+    client_max_body_size 50m;
+
+    location / {
+        proxy_pass http://cognix_agent;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+
+# WebSocket upgrade map (include in http {} if not already present)
+# map $http_upgrade $connection_upgrade {
+#     default upgrade;
+#     ''      close;
+# }

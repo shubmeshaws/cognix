@@ -2,9 +2,8 @@
 #
 # Cognix / KubeHealer — Ubuntu 24.04+ bootstrap
 #
-# Installs system dependencies, Docker, Node.js 20, pnpm, optional kubectl,
-# starts Postgres/Redis/Ollama via Docker Compose, installs Node deps, and
-# applies the database schema.
+# Bootstrap: system deps, Docker, Node 20, pnpm, Postgres/Redis/Ollama, schema push, build.
+# Does not keep the app running — use systemd or PM2 (see docs/HOSTING.md and final script output).
 #
 # Usage (from repo root after clone, or let the script clone for you):
 #   chmod +x scripts/setup-ubuntu.sh
@@ -19,12 +18,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-MODE="dev"          # dev | docker | deps-only
+MODE="dev"          # dev | production | docker | deps-only
 SKIP_OLLAMA=false
+START_APPS=false
+INSTALL_NGINX=false
+DOMAIN=""
+API_DOMAIN=""
+WEB_PORT=3000
+AGENT_PORT=3001
+CREATE_ADMIN=false
+ADMIN_EMAIL=""
+ADMIN_NAME=""
+ADMIN_USERNAME=""
 CLONE_URL="https://github.com/shubmeshaws/cognix.git"
 INSTALL_KUBECTL=true
 ASSUME_YES=false
 TARGET_DIR=""
+LOG_DIR_NAME=".kubehealer"
+DEPLOY_DIR_NAME=".kubehealer/deploy"
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!>\033[0m %s\n' "$*"; }
@@ -36,24 +47,30 @@ usage() {
 Cognix setup for Ubuntu 24.04+
 
 Options:
-  --mode MODE        dev (default) | docker | deps-only
+  --mode MODE        dev (default) | production | docker | deps-only
   --skip-ollama      Do not start or pull Ollama (use cloud LLMs in Settings)
+  --start            Start agent/web in background (dev only; use PM2/systemd for hosting)
+  --with-nginx       apt install nginx (configure using generated files + docs/HOSTING.md)
+  --domain HOST      App hostname for env + deploy configs (e.g. app.example.com)
+  --api-domain HOST  API hostname (default: api.<domain> or api.CHANGE_ME.example.com)
   --no-kubectl       Skip kubectl install
+  --create-admin     Create initial admin (requires --admin-email and --admin-name)
+  --admin-email E    Admin email for --create-admin
+  --admin-name N     Admin display name for --create-admin
+  --admin-username U Optional admin username
   --clone URL        Clone repo to ~/cognix if not already inside the repo
   --dir PATH         Use PATH as repo root (default: auto-detect or ~/cognix)
   -y, --yes          Non-interactive (apt -y, accept defaults)
   -h, --help         Show this help
 
 Modes:
-  dev        Install deps + Docker infra (postgres, redis, ollama) + pnpm + db schema.
-             You start agent/web manually (see final instructions).
-  docker     Install deps + build and run full stack via docker compose up -d --build.
-  deps-only  Install Git, Docker, Node 20, pnpm, kubectl only — no services.
+  dev          Infra + pnpm + DB schema. App start: --start or PM2/systemd (see HOSTING.md).
+  production   Same as dev + pnpm build + hosting deploy files + production env hints.
+  docker       Infra + schema, then docker compose up -d --build.
+  deps-only    Tools only (git, docker, node, pnpm, kubectl).
 
-After dev mode:
-  Terminal 1:  pnpm dev:agent
-  Terminal 2:  pnpm dev:web
-  Browser:     http://localhost:3000
+After setup: env files printed and saved to SETUP_COPY_PASTE.txt.
+Hosting (Nginx, SSL, systemd/PM2): docs/HOSTING.md
 
 EOF
 }
@@ -62,7 +79,15 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode) MODE="${2:?}"; shift 2 ;;
     --skip-ollama) SKIP_OLLAMA=true; shift ;;
+    --start) START_APPS=true; shift ;;
+    --with-nginx) INSTALL_NGINX=true; shift ;;
+    --domain) DOMAIN="${2:?}"; shift 2 ;;
+    --api-domain) API_DOMAIN="${2:?}"; shift 2 ;;
     --no-kubectl) INSTALL_KUBECTL=false; shift ;;
+    --create-admin) CREATE_ADMIN=true; shift ;;
+    --admin-email) ADMIN_EMAIL="${2:?}"; shift 2 ;;
+    --admin-name) ADMIN_NAME="${2:?}"; shift 2 ;;
+    --admin-username) ADMIN_USERNAME="${2:?}"; shift 2 ;;
     --clone) CLONE_URL="${2:?}"; shift 2 ;;
     --dir) TARGET_DIR="${2:?}"; shift 2 ;;
     -y|--yes) ASSUME_YES=true; shift ;;
@@ -72,8 +97,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$MODE" in
-  dev|docker|deps-only) ;;
-  *) die "Invalid --mode: $MODE (use dev, docker, or deps-only)" ;;
+  dev|production|docker|deps-only) ;;
+  *) die "Invalid --mode: $MODE (use dev, production, docker, or deps-only)" ;;
 esac
 
 # Real user when invoked with sudo
@@ -414,6 +439,114 @@ configure_env_files() {
   fi
 
   chmod +x "$REPO_ROOT/scripts/ollama-pull.sh" 2>/dev/null || true
+  patch_env_for_hosting
+}
+
+resolve_hosting_domains() {
+  HOSTING_APP_DOMAIN="${DOMAIN:-app.CHANGE_ME.example.com}"
+  if [[ -n "$API_DOMAIN" ]]; then
+    HOSTING_API_DOMAIN="$API_DOMAIN"
+  elif [[ -n "$DOMAIN" ]]; then
+    if [[ "$DOMAIN" == app.* ]]; then
+      HOSTING_API_DOMAIN="api.${DOMAIN#app.}"
+    else
+      HOSTING_API_DOMAIN="api.${DOMAIN}"
+    fi
+  else
+    HOSTING_API_DOMAIN="api.CHANGE_ME.example.com"
+  fi
+}
+
+patch_env_for_hosting() {
+  resolve_hosting_domains
+  local agent_env="$REPO_ROOT/apps/agent/.env"
+  local web_env="$REPO_ROOT/apps/web/.env"
+  local nauth
+
+  if [[ -f "$agent_env" ]]; then
+    if grep -qE '^AGENT_HOST=' "$agent_env" 2>/dev/null; then
+      sed_inplace 's/^AGENT_HOST=.*/AGENT_HOST=127.0.0.1/' "$agent_env"
+    else
+      echo "AGENT_HOST=127.0.0.1" >>"$agent_env"
+    fi
+  fi
+
+  [[ -n "$DOMAIN" ]] || return 0
+
+  log "Patching web env for hosting ($HOSTING_APP_DOMAIN / $HOSTING_API_DOMAIN)…"
+  [[ -f "$web_env" ]] || return 0
+
+  local api_url="https://${HOSTING_API_DOMAIN}"
+  local app_url="https://${HOSTING_APP_DOMAIN}"
+
+  if grep -qE '^NEXT_PUBLIC_API_URL=' "$web_env"; then
+    sed_inplace "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=${api_url}|" "$web_env"
+  else
+    echo "NEXT_PUBLIC_API_URL=${api_url}" >>"$web_env"
+  fi
+  if grep -qE '^NEXT_PUBLIC_APP_URL=' "$web_env"; then
+    sed_inplace "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=${app_url}|" "$web_env"
+  else
+    echo "NEXT_PUBLIC_APP_URL=${app_url}" >>"$web_env"
+  fi
+  if grep -qE '^NEXT_PUBLIC_AUTH_DISABLED=' "$web_env"; then
+    sed_inplace 's/^NEXT_PUBLIC_AUTH_DISABLED=.*/NEXT_PUBLIC_AUTH_DISABLED=false/' "$web_env"
+  fi
+  nauth="$(env_file_get "$web_env" NEXTAUTH_SECRET)"
+  if env_needs_secret "$nauth"; then
+    nauth="$(generate_secret)"
+    if grep -qE '^NEXTAUTH_SECRET=' "$web_env" 2>/dev/null; then
+      sed_inplace "s|^NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=${nauth}|" "$web_env"
+    else
+      echo "NEXTAUTH_SECRET=${nauth}" >>"$web_env"
+    fi
+  fi
+  if grep -qE '^NEXTAUTH_URL=' "$web_env"; then
+    sed_inplace "s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=${app_url}|" "$web_env"
+  else
+    echo "NEXTAUTH_URL=${app_url}" >>"$web_env"
+  fi
+}
+
+install_nginx_if_requested() {
+  [[ "$INSTALL_NGINX" == true ]] || return 0
+  log "Installing nginx…"
+  run_apt install "${APT_OPTS[@]}" nginx
+}
+
+substitute_template() {
+  local src="$1" dest="$2"
+  local next_bin="$REPO_ROOT/node_modules/.bin/next"
+  [[ -x "$next_bin" ]] || next_bin="$(command -v next 2>/dev/null || echo "$REPO_ROOT/node_modules/.bin/next")"
+  mkdir -p "$(dirname "$dest")"
+  sed \
+    -e "s|CHANGE_ME_REPO|${REPO_ROOT}|g" \
+    -e "s|CHANGE_ME_USER|${RUN_USER}|g" \
+    -e "s|CHANGE_ME_APP_DOMAIN|${HOSTING_APP_DOMAIN}|g" \
+    -e "s|CHANGE_ME_API_DOMAIN|${HOSTING_API_DOMAIN}|g" \
+    -e "s|CHANGE_ME_WEB_PORT|${WEB_PORT}|g" \
+    -e "s|CHANGE_ME_AGENT_PORT|${AGENT_PORT}|g" \
+    -e "s|CHANGE_ME_NEXT_BIN|${next_bin}|g" \
+    "$src" >"$dest"
+}
+
+generate_deploy_configs() {
+  resolve_hosting_domains
+  local deploy="$REPO_ROOT/$DEPLOY_DIR_NAME"
+  local tpl="$REPO_ROOT/deploy/templates"
+  log "Generating hosting configs → $deploy/"
+  mkdir -p "$deploy/nginx" "$deploy/systemd"
+  substitute_template "$tpl/nginx/cognix.conf.template" "$deploy/nginx/cognix.conf"
+  substitute_template "$tpl/systemd/cognix-agent.service.template" "$deploy/systemd/cognix-agent.service"
+  substitute_template "$tpl/systemd/cognix-web.service.template" "$deploy/systemd/cognix-web.service"
+  substitute_template "$tpl/pm2/ecosystem.config.cjs.template" "$deploy/ecosystem.config.cjs"
+}
+
+build_production_apps() {
+  [[ "$MODE" == "production" ]] || return 0
+  cd "$REPO_ROOT"
+  log "Building production artifacts (pnpm build)…"
+  pnpm build
 }
 
 # Echo full env file contents (actual on-disk values after setup).
@@ -467,13 +600,81 @@ install_node_dependencies() {
 
 push_database_schema() {
   cd "$REPO_ROOT"
-  log "Applying database schema (db:push)…"
-  make db:push
+  log "Applying database schema (drizzle push)…"
+  pnpm --filter @kubehealer/agent db:push
+}
+
+wait_for_http() {
+  local url="$1" label="$2" max_attempts="${3:-90}"
+  local i
+  for i in $(seq 1 "$max_attempts"); do
+    if curl -sf "$url" >/dev/null 2>&1; then
+      log "$label is ready ($url)"
+      return 0
+    fi
+    if [[ "$i" -eq "$max_attempts" ]]; then
+      warn "$label not ready at $url (check logs under $REPO_ROOT/$LOG_DIR_NAME/logs/)"
+      return 1
+    fi
+    sleep 2
+  done
+}
+
+create_admin_user() {
+  [[ "$CREATE_ADMIN" == true ]] || return 0
+  if [[ -z "$ADMIN_EMAIL" || -z "$ADMIN_NAME" ]]; then
+    die "--create-admin requires --admin-email and --admin-name"
+  fi
+  cd "$REPO_ROOT"
+  log "Creating admin user ($ADMIN_EMAIL)…"
+  local args=(--email "$ADMIN_EMAIL" --name "$ADMIN_NAME")
+  [[ -n "$ADMIN_USERNAME" ]] && args+=(--username "$ADMIN_USERNAME")
+  pnpm --filter @kubehealer/agent create-admin -- "${args[@]}"
+}
+
+start_dev_apps() {
+  [[ "$START_APPS" == true ]] || return 0
+  local log_dir="$REPO_ROOT/$LOG_DIR_NAME/logs"
+  local agent_pid="$REPO_ROOT/$LOG_DIR_NAME/agent.pid"
+  local web_pid="$REPO_ROOT/$LOG_DIR_NAME/web.pid"
+  local pid
+  mkdir -p "$log_dir"
+  cd "$REPO_ROOT"
+
+  if [[ -f "$agent_pid" ]]; then
+    pid="$(cat "$agent_pid" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      warn "Agent already running (pid $pid)"
+    else
+      rm -f "$agent_pid"
+    fi
+  fi
+  if [[ ! -f "$agent_pid" ]]; then
+    log "Starting agent (background)…"
+    nohup pnpm dev:agent >>"$log_dir/agent.log" 2>&1 &
+    echo $! >"$agent_pid"
+  fi
+
+  if [[ -f "$web_pid" ]]; then
+    pid="$(cat "$web_pid" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      warn "Web already running (pid $pid)"
+    else
+      rm -f "$web_pid"
+    fi
+  fi
+  if [[ ! -f "$web_pid" ]]; then
+    log "Starting web (background)…"
+    nohup pnpm dev:web >>"$log_dir/web.log" 2>&1 &
+    echo $! >"$web_pid"
+  fi
+
+  wait_for_http "http://localhost:3001/health" "Agent" 90 || true
+  wait_for_http "http://localhost:3000/" "Web UI" 120 || true
 }
 
 start_docker_stack() {
   cd "$REPO_ROOT"
-  configure_env_files
   log "Building and starting full Docker stack…"
   compose_cmd up -d --build
   log "Waiting for agent health…"
@@ -490,6 +691,58 @@ start_docker_stack() {
   done
 }
 
+print_hosting_commands() {
+  resolve_hosting_domains
+  local deploy="$REPO_ROOT/$DEPLOY_DIR_NAME"
+  cat <<EOF
+
+================================================================================
+NEXT STEPS — start app, Nginx, SSL (full guide: docs/HOSTING.md)
+================================================================================
+Domains (edit .kubehealer/deploy/ and env if these placeholders are wrong):
+  App:  https://${HOSTING_APP_DOMAIN}
+  API:  https://${HOSTING_API_DOMAIN}
+
+--- 1) Build (skip if you used --mode production) ---
+cd ${REPO_ROOT}
+pnpm build
+
+--- 2a) systemd ---
+sudo cp ${deploy}/systemd/cognix-agent.service /etc/systemd/system/
+sudo cp ${deploy}/systemd/cognix-web.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable cognix-agent cognix-web
+sudo systemctl start cognix-agent cognix-web
+sudo systemctl status cognix-agent cognix-web
+
+--- 2b) PM2 ---
+cd ${REPO_ROOT}
+sudo npm install -g pm2
+pm2 start ${deploy}/ecosystem.config.cjs
+pm2 save
+pm2 startup
+
+--- 3) Nginx ---
+sudo apt install -y nginx
+sudo cp ${deploy}/nginx/cognix.conf /etc/nginx/sites-available/cognix
+sudo ln -sf /etc/nginx/sites-available/cognix /etc/nginx/sites-enabled/
+# Add map \$http_upgrade \$connection_upgrade { default upgrade; '' close; } in /etc/nginx/nginx.conf http {}
+sudo nginx -t && sudo systemctl reload nginx
+
+--- 4) SSL (Let's Encrypt) — DNS A records must point here first ---
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d ${HOSTING_APP_DOMAIN} -d ${HOSTING_API_DOMAIN} \\
+  --email YOUR_EMAIL@example.com --agree-tos --redirect
+sudo certbot renew --dry-run
+
+--- Verify ---
+curl -s http://127.0.0.1:${AGENT_PORT}/health
+curl -s -o /dev/null -w "web %{http_code}\n" http://127.0.0.1:${WEB_PORT}/
+
+Generated configs: ${deploy}/
+EOF
+}
+
 print_env_files() {
   local agent_env="$REPO_ROOT/apps/agent/.env"
   local web_env="$REPO_ROOT/apps/web/.env"
@@ -502,7 +755,7 @@ print_env_files() {
     echo "================================================================================"
     echo "ENV FILES (actual contents on disk)"
     echo "================================================================================"
-    if [[ "$MODE" == "dev" ]]; then
+    if [[ "$MODE" == "dev" || "$MODE" == "production" ]]; then
       echo_env_file "$agent_env"
       echo_env_file "$web_env"
     elif [[ "$MODE" == "docker" ]]; then
@@ -514,18 +767,42 @@ print_env_files() {
       echo_env_file "$root_env"
       echo_env_file "$root_web"
     fi
+    if [[ "$MODE" != "deps-only" ]]; then
+      print_hosting_commands
+    fi
     echo ""
     echo "================================================================================"
   } | tee "$out_file"
 
   echo ""
-  log "Env files echoed above and saved to: $out_file"
+  log "Env + hosting commands saved to: $out_file"
+  log "Hosting guide: $REPO_ROOT/docs/HOSTING.md"
 }
 
 print_summary() {
+  local ip deploy="$REPO_ROOT/$DEPLOY_DIR_NAME"
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost')"
+  resolve_hosting_domains
   printf '\n\033[1;32m✓ Cognix setup complete\033[0m\n\n'
-  echo "Repo:  $REPO_ROOT"
-  echo "Mode:  $MODE"
+  echo "Repo:     $REPO_ROOT"
+  echo "Mode:     $MODE"
+  echo "Guide:    docs/HOSTING.md"
+  if [[ "$MODE" != "deps-only" ]]; then
+    echo "Deploy:   $deploy/"
+    echo "Output:   SETUP_COPY_PASTE.txt"
+  fi
+  if [[ "$MODE" == "dev" || "$MODE" == "production" ]]; then
+    echo "Local:    http://127.0.0.1:${WEB_PORT}  agent http://127.0.0.1:${AGENT_PORT}/health"
+    if [[ "$DOMAIN" != "" ]]; then
+      echo "Public:   https://${HOSTING_APP_DOMAIN}  api https://${HOSTING_API_DOMAIN}"
+    fi
+  elif [[ "$MODE" == "docker" ]]; then
+    echo "Web UI:   http://localhost:3000  (LAN: http://${ip}:3000)"
+    echo "Agent:    http://localhost:3001/health"
+  fi
+  if [[ "$START_APPS" == true ]]; then
+    echo "Logs:     $REPO_ROOT/$LOG_DIR_NAME/logs/  (--start was used)"
+  fi
   print_env_files
 }
 
@@ -538,6 +815,7 @@ main() {
   log "Cognix Ubuntu setup (mode=$MODE)"
   check_os
   install_system_packages
+  install_nginx_if_requested
   install_docker
   install_node_pnpm
   install_kubectl
@@ -552,15 +830,25 @@ main() {
   configure_env_files
 
   if [[ "$MODE" == "docker" ]]; then
+    start_infra_services
+    install_node_dependencies
+    push_database_schema
+    build_production_apps
+    generate_deploy_configs
+    create_admin_user
     start_docker_stack
     print_summary
     exit 0
   fi
 
-  # dev mode
+  # dev | production
   start_infra_services
   install_node_dependencies
   push_database_schema
+  build_production_apps
+  generate_deploy_configs
+  create_admin_user
+  start_dev_apps
   print_summary
 }
 
