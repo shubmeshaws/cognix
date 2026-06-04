@@ -33,6 +33,7 @@ ADMIN_NAME=""
 ADMIN_USERNAME=""
 CLONE_URL="https://github.com/shubmeshaws/cognix.git"
 INSTALL_KUBECTL=true
+INSTALL_AWS_CLI=true
 ASSUME_YES=false
 TARGET_DIR=""
 LOG_DIR_NAME=".kubehealer"
@@ -58,6 +59,7 @@ Options:
   --domain HOST      App hostname for env + deploy configs (e.g. app.example.com)
   --api-domain HOST  API hostname (default: api.<domain> or api.CHANGE_ME.example.com)
   --no-kubectl       Skip kubectl install
+  --no-aws-cli       Skip AWS CLI v2 install (needed for EKS local kubeconfig)
   --create-admin     Create initial admin (requires --admin-email and --admin-name)
   --admin-email E    Admin email for --create-admin
   --admin-name N     Admin display name for --create-admin
@@ -71,7 +73,7 @@ Modes:
   dev          Infra + pnpm + DB schema. App start: --start or PM2/systemd (see HOSTING.md).
   production   Same as dev + pnpm build + hosting deploy files + production env hints.
   docker       Infra + schema, then docker compose up -d --build.
-  deps-only    Tools only (git, docker, node, pnpm, kubectl).
+  deps-only    Tools only (git, docker, node, pnpm, kubectl, AWS CLI).
 
 After setup: env files printed and saved to SETUP_COPY_PASTE.txt.
 Hosting (Nginx, SSL, systemd/PM2): docs/HOSTING.md
@@ -89,6 +91,7 @@ while [[ $# -gt 0 ]]; do
     --domain) DOMAIN="${2:?}"; shift 2 ;;
     --api-domain) API_DOMAIN="${2:?}"; shift 2 ;;
     --no-kubectl) INSTALL_KUBECTL=false; shift ;;
+    --no-aws-cli) INSTALL_AWS_CLI=false; shift ;;
     --create-admin) CREATE_ADMIN=true; shift ;;
     --admin-email) ADMIN_EMAIL="${2:?}"; shift 2 ;;
     --admin-name) ADMIN_NAME="${2:?}"; shift 2 ;;
@@ -163,6 +166,7 @@ install_system_packages() {
     make \
     lsb-release \
     build-essential \
+    unzip \
     python3 \
     python3-venv \
     python3-pip
@@ -395,6 +399,40 @@ install_kubectl() {
     sudo apt-get install "${APT_OPTS[@]}" -y kubectl
   fi
   log "kubectl $(kubectl version --client --short 2>/dev/null || echo installed)"
+}
+
+install_aws_cli() {
+  [[ "$INSTALL_AWS_CLI" == true ]] || return 0
+  if command -v aws >/dev/null 2>&1; then
+    log "AWS CLI already installed: $(aws --version 2>&1 | head -1)"
+    return 0
+  fi
+
+  log "Installing AWS CLI v2 (EKS kubeconfig uses: aws eks get-token)…"
+  require_root_for_apt
+  run_apt install "${APT_OPTS[@]}" -y unzip
+
+  local arch zip_name tmp_dir="/tmp/awscliv2-install-$$"
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64|amd64) zip_name="awscli-exe-linux-x86_64.zip" ;;
+    aarch64|arm64) zip_name="awscli-exe-linux-aarch64.zip" ;;
+    *) die "Unsupported architecture for AWS CLI: $arch (use --no-aws-cli to skip)" ;;
+  esac
+
+  mkdir -p "$tmp_dir"
+  curl -fsSL "https://awscli.amazonaws.com/${zip_name}" -o "$tmp_dir/awscliv2.zip"
+  unzip -q "$tmp_dir/awscliv2.zip" -d "$tmp_dir"
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$tmp_dir/aws/install" --update
+  else
+    sudo "$tmp_dir/aws/install" --update
+  fi
+  rm -rf "$tmp_dir"
+
+  command -v aws >/dev/null 2>&1 || die "AWS CLI install finished but aws not in PATH"
+  log "AWS CLI $(aws --version 2>&1 | head -1)"
+  warn "EKS connect: run \`aws configure\` or attach an EC2 IAM role, then \`aws sts get-caller-identity\`"
 }
 
 resolve_repo_root() {
@@ -1575,6 +1613,7 @@ main() {
   install_docker
   install_node_pnpm
   install_kubectl
+  install_aws_cli
 
   if [[ "$MODE" == "deps-only" ]]; then
     resolve_repo_root 2>/dev/null || REPO_ROOT="${TARGET_DIR:-$REPO_ROOT}"

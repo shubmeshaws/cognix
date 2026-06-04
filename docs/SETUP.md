@@ -94,6 +94,7 @@ Settings are saved on the agent host (persisted volume in Docker/K8s when config
 | [Node.js](https://nodejs.org/) | 20+ | Only for local dev without Docker images |
 | [pnpm](https://pnpm.io/installation) | 9+ | Only for local dev |
 | [kubectl](https://kubernetes.io/docs/tasks/tools/) | 1.28+ | Connect clusters; required for Helm path |
+| [AWS CLI](https://aws.amazon.com/cli/) | v2 | EKS local kubeconfig (`aws eks get-token`); installed by `scripts/setup-ubuntu.sh` (`--no-aws-cli` to skip) |
 | [Helm](https://helm.sh/docs/intro/install/) | 3.12+ | Kubernetes install only |
 
 ### Install Git & Docker

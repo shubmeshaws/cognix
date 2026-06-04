@@ -373,18 +373,36 @@ function mapConnectError(err: unknown): Error {
     return new Error(`Network unreachable: ${err.message}`);
   }
   if (err instanceof Error) {
-    const msg = err.message.toLowerCase();
-    if (
-      msg.includes("econnrefused") ||
-      msg.includes("enotfound") ||
-      msg.includes("etimedout") ||
-      msg.includes("fetch failed") ||
-      msg.includes("network")
-    ) {
-      return new Error(`Network unreachable: ${err.message}`);
+    const msg = err.message;
+    const lower = msg.toLowerCase();
+
+    const execMissing = lower.match(/spawn\s+(\S+)\s+enoent/);
+    if (execMissing) {
+      const cmd = execMissing[1];
+      if (cmd === "aws") {
+        return new Error(
+          "EKS kubeconfig requires the AWS CLI on the agent host (command not found: aws). " +
+            "Install AWS CLI v2 on this server, run `aws configure` or attach an IAM role, then retry Connect. " +
+            "Ubuntu: curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip -o /tmp/awscliv2.zip && unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install",
+        );
+      }
+      return new Error(
+        `Kubeconfig exec plugin not found on the agent host (command: ${cmd}). ` +
+          `Install ${cmd} on the machine running the agent, then retry Connect.`,
+      );
     }
-    if (msg.includes("unauthorized") || msg.includes("401") || msg.includes("403")) {
-      return new Error(`Authentication failed: ${err.message}`);
+
+    if (
+      lower.includes("econnrefused") ||
+      lower.includes("enotfound") ||
+      lower.includes("etimedout") ||
+      lower.includes("fetch failed") ||
+      lower.includes("network")
+    ) {
+      return new Error(`Network unreachable: ${msg}`);
+    }
+    if (lower.includes("unauthorized") || lower.includes("401") || lower.includes("403")) {
+      return new Error(`Authentication failed: ${msg}`);
     }
     return err;
   }

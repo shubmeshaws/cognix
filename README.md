@@ -35,6 +35,7 @@ Automated installer: **`scripts/setup-ubuntu.sh`** — installs Docker, Node 20,
 | **Memory (RAM)** | **At least 4–8 GB** — Ollama and Docker are RAM-heavy; 8 GB is smoother for local LLM |
 | **Storage (EBS)** | **20+ GB** on the safe side (Docker images, Ollama models, logs) |
 | **Access** | SSH as a normal user (not root) |
+| **AWS CLI** | Installed by **`setup-ubuntu.sh`** (for EKS `~/.kube/config`); skip with `--no-aws-cli` |
 | **Firewall — development** | Inbound **TCP 3000** (web UI), **TCP 3001** (agent API for dashboard), **22** (SSH) |
 | **Firewall — production** | After **Nginx + domain + SSL**: inbound **80** and **443** only (app listens on localhost) |
 
@@ -120,6 +121,17 @@ cd ~/cognix && pnpm install   # no sudo
 - `apps/web/.env` — `AGENT_INTERNAL_URL=http://127.0.0.1:3001` (setup/login proxy on same host)
 - `NEXT_PUBLIC_AUTH_DISABLED=false` (full setup wizard + login)
 - `JWT_SECRET` — same value in `apps/agent/.env` and `apps/web/.env`
+- `apps/agent/.env` — `ALLOW_LOCAL_KUBECONFIG=true` (read `~/.kube/config` on the **agent host**)
+
+**Connect EKS from EC2:** the setup script installs **AWS CLI v2** automatically. Copy `~/.kube/config` to the server, then configure credentials on the **agent host**:
+
+```bash
+aws configure                  # or attach an EC2 IAM role with EKS access
+aws sts get-caller-identity
+kubectl get nodes --context '<your-eks-context>'   # must work before Connect in UI
+```
+
+If you skipped CLI install: re-run `./scripts/setup-ubuntu.sh` or add `--no-aws-cli` only when you do not use EKS.
 
 Use `--dev-auth-off` only if you want to skip login and go straight to the dashboard.
 
