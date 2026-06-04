@@ -23,6 +23,7 @@ Automated installer: **`scripts/setup-ubuntu.sh`** — installs Docker, Node 20,
 | Requirement | Details |
 |-------------|---------|
 | **OS** | Ubuntu **24.04+** (22.04 often works) |
+| **Storage [EBS]** | **20+ GB** For Safe side |
 | **Access** | SSH as a normal user (not root) |
 | **Firewall — development** | Inbound **TCP 3000** (web UI), **TCP 3001** (agent API for dashboard), **22** (SSH) |
 | **Firewall — production** | After **Nginx + domain + SSL**: inbound **80** and **443** only (app listens on localhost) |
