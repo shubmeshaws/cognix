@@ -77,13 +77,13 @@ sudo corepack prepare pnpm@9.15.0 --activate
 pnpm -v
 ```
 
-If **`EACCES`** on `node_modules`, root-owned files are blocking delete (do not use `sudo pnpm` in the repo):
+If **`EACCES`** on `node_modules`, something created the tree as **root** (common causes: `sudo pnpm install` or `sudo corepack use` **inside** `~/cognix`). Global pnpm is fine with sudo (`sudo corepack prepare`); repo commands must run as `ubuntu` only.
 
 ```bash
 cd ~/cognix
 chmod +x scripts/fix-repo-permissions.sh
 ./scripts/fix-repo-permissions.sh
-pnpm install
+pnpm install   # no sudo
 ```
 
 Or manually:
@@ -91,7 +91,7 @@ Or manually:
 ```bash
 sudo rm -rf ~/cognix/node_modules
 sudo chown -R "$USER:$USER" ~/cognix ~/.local/share/pnpm ~/.cache/node 2>/dev/null
-cd ~/cognix && pnpm install
+cd ~/cognix && pnpm install   # no sudo
 ```
 
 3. Open **`http://<your-server-public-ip>:3000/setup`** → check DB → create schema → **`/login`** → generate admin credentials → sign in.

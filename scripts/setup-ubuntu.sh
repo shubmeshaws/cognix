@@ -224,6 +224,31 @@ run_with_elevation() {
   fi
 }
 
+assert_run_as_normal_user() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    die "Do not run repo commands as root. Use: ./scripts/setup-ubuntu.sh as $RUN_USER (no sudo on the script)."
+  fi
+}
+
+# pnpm/corepack in the repo must never use sudo — sudo corepack use creates root-owned node_modules.
+run_repo_as_user() {
+  assert_run_as_normal_user
+  if [[ "$(whoami)" == "$RUN_USER" ]]; then
+    (cd "$REPO_ROOT" && "$@")
+  else
+    sudo -u "$RUN_USER" -H env HOME="$RUN_HOME" USER="$RUN_USER" LOGNAME="$RUN_USER" \
+      bash -lc "$(printf 'cd %q && ' "$REPO_ROOT")$(printf '%q ' "$@")"
+  fi
+}
+
+fix_repo_tree_ownership_if_needed() {
+  [[ -d "$REPO_ROOT" ]] || return 0
+  if repo_has_foreign_owned_files "$REPO_ROOT"; then
+    warn "Repo has files not owned by $RUN_USER (often from: sudo corepack use in ~/cognix) — chown -R"
+    run_with_elevation chown -R "$RUN_USER:$RUN_USER" "$REPO_ROOT"
+  fi
+}
+
 node_is_system_wide() {
   local nodepath
   nodepath="$(command -v node 2>/dev/null || true)"
@@ -278,27 +303,28 @@ enable_corepack_pnpm() {
 }
 
 # Pin pnpm from package.json (avoids Corepack defaulting to pnpm 11 on Node 20).
+# Global corepack may use sudo; project corepack use must NOT (creates root-owned node_modules).
 ensure_project_pnpm() {
   [[ -f "$REPO_ROOT/package.json" ]] || return 0
-  cd "$REPO_ROOT"
   if command -v corepack >/dev/null 2>&1; then
     if node_is_system_wide; then
       run_with_elevation corepack enable 2>/dev/null || true
-      run_with_elevation corepack use "pnpm@${PNPM_VERSION}" 2>/dev/null \
-        || run_with_elevation corepack prepare "pnpm@${PNPM_VERSION}" --activate 2>/dev/null \
-        || true
+      run_with_elevation corepack prepare "pnpm@${PNPM_VERSION}" --activate 2>/dev/null || true
     else
       corepack enable 2>/dev/null || true
-      corepack use "pnpm@${PNPM_VERSION}" 2>/dev/null \
-        || corepack prepare "pnpm@${PNPM_VERSION}" --activate 2>/dev/null \
-        || true
+      corepack prepare "pnpm@${PNPM_VERSION}" --activate 2>/dev/null || true
     fi
   fi
   if ! pnpm_version_ok; then
     warn "Repo requires pnpm ${PNPM_VERSION}; fixing global pnpm"
     install_pnpm_via_npm_global
   fi
-  log "Project pnpm: $(pnpm -v)"
+  if command -v corepack >/dev/null 2>&1; then
+    run_repo_as_user corepack enable 2>/dev/null || true
+    run_repo_as_user corepack use "pnpm@${PNPM_VERSION}" 2>/dev/null || true
+  fi
+  fix_repo_tree_ownership_if_needed
+  log "Project pnpm: $(run_repo_as_user pnpm -v 2>/dev/null || pnpm -v)"
 }
 
 install_node_pnpm() {
@@ -691,9 +717,8 @@ generate_deploy_configs() {
 
 build_production_apps() {
   [[ "$MODE" == "production" ]] || return 0
-  cd "$REPO_ROOT"
   log "Building production artifacts (pnpm build)…"
-  pnpm build
+  run_repo_as_user pnpm build
 }
 
 # ANSI colors for required-env output (terminal only; file stays plain).
@@ -788,7 +813,7 @@ print_api_health_checks() {
       "$SERVER_PUBLIC_IP" "$WEB_PORT" "$SERVER_PUBLIC_IP" "$WEB_PORT"
     printf '\n  %s# pnpm on Node 20 must be 9.x (not 11+):%s  pnpm -v  →  9.15.0\n' "$ENV_C_DIM" "$ENV_C_RESET"
     printf '  %s# fix:%s sudo npm install -g pnpm@9.15.0\n' "$ENV_C_DIM" "$ENV_C_RESET"
-    printf '  %s# EACCES on node_modules:%s sudo chown -R $USER:$USER %s\n' "$ENV_C_DIM" "$REPO_ROOT" "$ENV_C_RESET"
+    printf '  %s# EACCES / root node_modules:%s never sudo corepack use or pnpm in repo; run scripts/fix-repo-permissions.sh\n' "$ENV_C_DIM" "$ENV_C_RESET"
   else
     echo "curl -s http://127.0.0.1:${AGENT_PORT}/health"
     [[ "$agent_ok" == true ]] && echo "→ OK $agent_body" || echo "→ not running (pnpm dev:agent)"
@@ -1021,18 +1046,17 @@ repo_has_foreign_owned_files() {
 
 prepare_clean_node_modules() {
   [[ -d "$REPO_ROOT" ]] || return 0
-  if [[ "$(id -u)" -eq 0 ]]; then
-    die "Do not run pnpm install as root. Use your normal user (e.g. ubuntu)."
-  fi
+  assert_run_as_normal_user
 
   local fix_script="$REPO_ROOT/scripts/fix-repo-permissions.sh"
   if [[ -x "$fix_script" ]]; then
     log "Fixing repo permissions ($RUN_USER)…"
     "$fix_script" "$REPO_ROOT" "$RUN_USER"
+    fix_repo_tree_ownership_if_needed
     return 0
   fi
 
-  run_with_elevation chown -R "$RUN_USER:$RUN_USER" "$REPO_ROOT"
+  fix_repo_tree_ownership_if_needed
 
   if [[ ! -d "$REPO_ROOT/node_modules" ]]; then
     return 0
@@ -1052,19 +1076,22 @@ prepare_clean_node_modules() {
 }
 
 install_node_dependencies() {
-  cd "$REPO_ROOT"
   prepare_clean_node_modules
   ensure_project_pnpm
-  log "Installing pnpm dependencies (as $RUN_USER, no sudo)…"
-  pnpm install
+  log "Installing pnpm dependencies as $RUN_USER (whoami=$(whoami), uid=$(id -u))…"
+  run_repo_as_user pnpm install
+  fix_repo_tree_ownership_if_needed
   log "Building shared package…"
-  pnpm --filter @kubehealer/shared build
+  run_repo_as_user pnpm --filter @kubehealer/shared build
+  fix_repo_tree_ownership_if_needed
+  if [[ -d "$REPO_ROOT/node_modules" ]] && repo_has_foreign_owned_files "$REPO_ROOT/node_modules"; then
+    die "node_modules is still not owned by $RUN_USER. Do not run: sudo pnpm install or sudo corepack use in the repo."
+  fi
 }
 
 push_database_schema() {
-  cd "$REPO_ROOT"
   log "Applying database schema (drizzle push)…"
-  pnpm --filter @kubehealer/agent db:push
+  run_repo_as_user pnpm --filter @kubehealer/agent db:push
 }
 
 wait_for_http() {
@@ -1088,11 +1115,10 @@ create_admin_user() {
   if [[ -z "$ADMIN_EMAIL" || -z "$ADMIN_NAME" ]]; then
     die "--create-admin requires --admin-email and --admin-name"
   fi
-  cd "$REPO_ROOT"
   log "Creating admin user ($ADMIN_EMAIL)…"
   local args=(--email "$ADMIN_EMAIL" --name "$ADMIN_NAME")
   [[ -n "$ADMIN_USERNAME" ]] && args+=(--username "$ADMIN_USERNAME")
-  pnpm --filter @kubehealer/agent create-admin -- "${args[@]}"
+  run_repo_as_user pnpm --filter @kubehealer/agent create-admin -- "${args[@]}"
 }
 
 start_dev_apps() {

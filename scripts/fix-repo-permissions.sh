@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Fix EACCES on node_modules (root-owned files from sudo pnpm/npm in the repo).
+# Fix EACCES on node_modules (root-owned files from sudo pnpm/npm or sudo corepack use in the repo).
 #
 # Usage:
 #   chmod +x scripts/fix-repo-permissions.sh
@@ -65,4 +65,4 @@ fi
 log "Done. Next:"
 echo "  cd $REPO_ROOT"
 echo "  pnpm -v    # expect 9.15.0"
-echo "  pnpm install"
+echo "  pnpm install   # as $RUN_USER only — never sudo pnpm or sudo corepack use in the repo"
