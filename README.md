@@ -84,11 +84,22 @@ pnpm -v   # should print 9.15.0
 <details>
 <summary><strong>EC2 server prep (optional)</strong></summary>
 
-On a new **Ubuntu 22.04** EC2 instance:
+On a new **Ubuntu 24.04+** server, use the automated installer:
 
-1. Security group — allow inbound **22** (SSH). For testing, allow **3000** and **3001** (lock down behind nginx in production).
-2. SSH in: `ssh -i your-key.pem ubuntu@YOUR_SERVER_IP`
-3. Install Git, Docker, Node 20, and enable pnpm:
+```bash
+git clone https://github.com/shubmeshaws/cognix.git cognix
+cd cognix
+chmod +x scripts/setup-ubuntu.sh
+./scripts/setup-ubuntu.sh -y
+```
+
+Or install tools only, then follow the steps below:
+
+```bash
+./scripts/setup-ubuntu.sh --deps-only -y
+```
+
+Manual install (Ubuntu 22.04 / EC2):
 
 ```bash
 sudo apt update && sudo apt install -y git curl ca-certificates
