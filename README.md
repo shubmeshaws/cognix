@@ -62,9 +62,9 @@ pnpm dev:agent
 pnpm dev:web or pnpm dev:web -- -H 0.0.0.0
 ```
 
-```bash
-DONE
-```
+
+### DONE
+
 ---
 **Production build + deploy configs:**
 
